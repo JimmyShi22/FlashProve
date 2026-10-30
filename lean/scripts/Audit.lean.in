@@ -1,0 +1,1458 @@
+-- Copyright 2026 Anthropic PBC
+-- SPDX-License-Identifier: Apache-2.0
+/-
+The audit step of check.py: a Lean program that checks the library's compiled files. What a pass
+shows and does not show: scripts/README.md (the entry on the audit, and "The listing").
+
+check.py writes `import Lean`, some definitions and then this file to a new file, and runs
+`lake env lean` on it. The definitions: `ourModules` (the library's modules); `topTheorems`,
+`headlines`, `listFor`, `choiceAllow` (from top-theorems.txt, listing-for.txt, choice-allow.txt);
+`partSide`, `partLimit`, `companionPart`, `companionFloor`, `initTables`; `nonce` (random).
+
+Only Lean is imported; the library's compiled files are loaded as data (`loadExts := false`). So no
+macro, notation, instance or attribute of the library takes part in elaborating or running this
+file: an audit that imported the library could be rewritten by it.
+
+AUDIT_OUT is the path at which the audit creates its result file: the lines on the named theorems,
+then the listing. AUDIT_PART is set only by the audit itself, to run this file again for one group
+of modules ("Parts" below). Every line that the audit prints (`say`) begins with AUDIT and the
+nonce; of the output check.py takes no other line as a result, and reads these to the letter. One of
+them has the result file's sha256. An error that stops the audit (`throwError`) begins with "AUDIT:"
+and has no nonce.
+
+Words. "Of the library" (printed: "ours"): declared in a module of `ourModules`. "Named theorem":
+one that top-theorems.txt names, as closed (no binder; with the constants to be searched for choice,
+here `schemes`), as general, or as a headline (with the form of its statement).
+
+Order. Helper definitions, then one `run_cmd`. The sections clashes, kinds, parts, axioms, syntax,
+specs, binders, reach, listing and choice are named by the first word of the lines that they print.
+All sections: environment variables; groups and clashes, with the first half of kinds (companion
+constants, initializers); legend; parts; for each group axioms, kinds, syntax, specs, and for each
+named theorem binders (for a headline: the form), axioms, reach, syntax, the listing, choice;
+summary lines and result file.
+-/
+open Lean Meta
+
+namespace LibraryAudit
+
+def runMeta {α : Type} (env : Environment) (x : MetaM α) : IO α := do
+  -- Without these options parts of a printed term are lost: a deeply nested subterm
+  -- (`pp.deepTerms`) and the rest of a very large term (`pp.maxSteps`) are printed as the sign for
+  -- an omitted proof, and on a very deep term the printer gives up (`maxRecDepth`; "failed to
+  -- pretty print", which the listing checks for).
+  let opts : Options :=
+    ((({} : Options).setBool `pp.deepTerms true).set `pp.maxSteps (1000000000 : Nat)).set
+      `maxRecDepth (1000000 : Nat)
+  let ctx : Core.Context :=
+    { fileName := "<audit>", fileMap := default, options := opts, maxRecDepth := 1000000 }
+  let (a, _) ← (x.run' {} {}).toIO ctx { env }
+  return a
+
+/- `mn` is `env.header.moduleNames`, taken once by the caller: the searches below ask for a
+   constant's module very often, and `env.header.moduleNames[i]` builds the whole array anew at
+   every call. -/
+def modOf (mn : Array Name) (env : Environment) (n : Name) : Option Name :=
+  (env.getModuleIdxFor? n).map fun i => mn[i.toNat]!
+def isOurs (mn : Array Name) (env : Environment) (n : Name) : Bool :=
+  match modOf mn env n with | some m => ourModules.contains m | none => false
+def shown (n : Name) : Name := (privateToUserName? n).getD n
+
+def digits (s : String) : Bool := !s.isEmpty && s.all Char.isDigit
+def formOf (s : String) (pres : List String) : Bool :=
+  pres.any fun pre => s.startsWith pre && digits (s.drop pre.length).toString
+/-- Whether `n` is an auxiliary declaration that Lean generates beside another (`foo.match_1`,
+`foo.eq_1`, `T.below` and the like), by the form of its name and its kind together. The name alone
+is not enough: `def Foo.match_1 : Prop := False` would hide a hypothesis. Whatever fails the test is
+not Lean's by its name; `leanMade` also asks Lean's tables. -/
+def leanMadeForm (env : Environment) (n : Name) : Bool :=
+  match n, env.find? n with
+  | .str p s, some ci =>
+    let isThm := ci matches .thmInfo _
+    let parentInd :=
+      (env.find? p matches some (.inductInfo _)) || (env.find? p matches some (.ctorInfo _))
+    -- A definition of a proposition is never Lean's: `def T.elim : Prop := False` (`T` an inductive
+    -- type) and `def Foo.match_1 (motive : Unit) : Prop := False` would pass the tests below.
+    if (ci matches .defnInfo _) && ci.type.getForallBody.isProp then false else
+    -- Nor is an inductive type: `inductive T.elim : Prop` without a constructor is another False.
+    if ci matches .inductInfo _ then false else
+    if ["eq_def", "inj", "injEq", "sizeOf_spec", "congr_simp"].contains s ||
+        formOf s ["_proof_", "proof_", "eq_"] then isThm
+    else if formOf s ["match_"] then
+      (match ci.type with | .forallE b _ _ _ => b == `motive | _ => false)
+    else if ["noConfusionType", "ctorIdx", "toCtorIdx", "below", "ibelow", "brecOn", "binductionOn",
+          "_sizeOf_inst", "_flat_ctor", "ctorElim", "ctorElimType", "elim"].contains s ||
+        formOf s ["_sizeOf_"] then parentInd
+    else false
+  | _, _ => false
+/-- Whether `n` counts as generated by Lean: by Lean's own tables (recursors, auxiliary recursors,
+`noConfusion`) or by `leanMadeForm`. The counts of what a statement depends on show such
+declarations apart. -/
+def leanMade (env : Environment) (n : Name) : Bool :=
+  -- An inductive type or a constructor never counts as Lean's, by name or by table: a second,
+  -- easily satisfied constructor `T.elim` would pass by its name and not be printed, and a
+  -- `run_cmd` can write any name into the table of auxiliary recursors. What remains: recursors,
+  -- theorems, definitions (which the listing prints anyway), and an axiom or opaque constant under
+  -- such a name, which fails under axioms or kinds. The price: Lean's own `below` of an inductive
+  -- predicate is counted and printed.
+  if (env.find? n matches some (.inductInfo _)) || (env.find? n matches some (.ctorInfo _)) then
+    false
+  else
+  (env.find? n matches some (.recInfo _)) || isAuxRecursor env n ||
+    isNoConfusion env n || leanMadeForm env n
+
+/-- `e` without the annotations and the `let` or `have` bindings at its head. -/
+partial def headOf : Expr → Expr
+  | .mdata _ e => headOf e
+  | .letE _ _ _ b _ => headOf b
+  | e => e
+
+/-- The application that a statement consists of, below its leading ∃: for `∃ x, P a b x` it is
+`P a b x`. -/
+partial def coreOf (e : Expr) : Expr :=
+  let e := headOf e
+  if e.isAppOfArity ``Exists 2 then (match e.appArg! with | .lam _ _ b _ => coreOf b | _ => e)
+  else e
+
+def flat (s : String) : String :=
+  " ".intercalate ((s.splitOn "\n").map fun x => x.trimAscii.toString)
+/-- `s` as one line of the result file: line breaks (`flat`), control characters, the line and
+paragraph separators and the bidirectional control characters become blanks. A name in guillemets
+can contain any character, and a terminal or a reader of lines could take these for a line's end or
+a command. -/
+def oneLine (s : String) : String := (flat s).map fun c =>
+  let v := c.val
+  if v < 32 || (127 ≤ v && v ≤ 159) || v == 0x2028 || v == 0x2029 || v == 0x200E || v == 0x200F ||
+      (0x202A ≤ v && v ≤ 0x202E) || (0x2066 ≤ v && v ≤ 0x2069) then ' '
+  else c
+
+def chunks (xs : Array Name) (k : Nat) : List String := Id.run do
+  let mut out : List String := []
+  let mut cur : List String := []
+  for x in xs do
+    cur := cur ++ [toString (shown x) ++ (if isPrivateName x then "(private)" else "")]
+    if cur.length == k then
+      out := out ++ [" ".intercalate cur]
+      cur := []
+  unless cur.isEmpty do out := out ++ [" ".intercalate cur]
+  return out
+
+/-- What a constant's meaning depends on directly: its type; the value of a definition or opaque
+constant; an inductive type's constructors. A theorem's proof is no part of what a statement
+says. -/
+def meaningOf (ci : ConstantInfo) : List Expr × List Name :=
+  match ci with
+  | .defnInfo d => ([d.type, d.value], [])
+  | .opaqueInfo d => ([d.type, d.value], [])
+  | .inductInfo d => ([d.type], d.ctors)
+  | c => ([c.type], [])
+
+/-- The declarations of the library that `meaningOf` mentions for `n`. `os`: `ourModules` as a
+set. -/
+def neighbours (mn : Array Name) (env : Environment) (os : NameSet) (n : Name) : Array Name :=
+  match env.find? n with
+  | none => #[]
+  | some ci =>
+    let (es, ns) := meaningOf ci
+    let all := es.foldl (fun acc e => acc ++ e.getUsedConstants) ns.toArray
+    let s : NameSet :=
+      all.foldl (fun s c =>
+          if (match modOf mn env c with | some m => os.contains m | none => false) then s.insert c
+          else s) {}
+    s.toArray
+
+/- The search for reach: the declarations of the library on which the names in `todo` depend by
+   `meaningOf`, directly or not. `adj` caches the answers of `neighbours`, and the caller keeps it
+   for all searches within a group of modules: taking the constants out of large types and values is
+   nearly all the cost, and the named theorems depend on much the same declarations. -/
+partial def reachGo (mn : Array Name) (env : Environment) (os : NameSet) (todo : List Name)
+    (seen : NameSet) (stop : NameSet) (adj : Std.HashMap Name (Array Name)) :
+    NameSet × Std.HashMap Name (Array Name) :=
+  match todo with  -- every name in todo is of the library
+  | [] => (seen, adj)
+  | n :: rest =>
+    if seen.contains n then reachGo mn env os rest seen stop adj else
+    -- A name in `stop` is counted and not entered.
+    if stop.contains n then reachGo mn env os rest (seen.insert n) stop adj else
+    match adj[n]? with
+    | some ns =>
+      reachGo mn env os (ns.foldl (fun l c => if seen.contains c then l else c :: l) rest)
+        (seen.insert n) stop adj
+    | none =>
+      let ns := neighbours mn env os n
+      reachGo mn env os (ns.foldl (fun l c => if seen.contains c then l else c :: l) rest)
+        (seen.insert n) stop (adj.insert n ns)
+
+def reach (mn : Array Name) (env : Environment) (os : NameSet) (todo : List Name) (seen : NameSet)
+    (stop : NameSet) (adj : Std.HashMap Name (Array Name)) :
+    NameSet × Std.HashMap Name (Array Name) :=
+  reachGo mn env os
+    (todo.filter fun n => match modOf mn env n with | some m => os.contains m | none => false)
+    seen stop adj
+
+structure AxSt where
+  memo : Std.HashMap Name (Array Name) := {}
+  busy : NameSet := {}  -- the constants whose search has begun and not ended
+  -- Set when the search comes back to a constant in `busy`: what is cached from then on may be too
+  -- little.
+  cyc : Bool := false
+
+/-- The axioms on which `n` depends, through types, values and proofs: those that Lean's own
+collector (`CollectAxioms`) finds, or more, never fewer. More, because a mutual block is one unit:
+each of its types is charged with the axioms of the others too.
+
+Answers are cached (`memo`), so that what the named theorems share is searched once; starting the
+collector anew for each theorem is slow. Caching is safe only where nothing refers back. An
+inductive type and its constructors do, so a block (the mutual types and all their constructors)
+gets one answer. If the search still comes back to a constant that is being searched, other than
+itself, it sets `cyc`; the caller then uses Lean's collector for that theorem and every later one of
+the group, and the audit says so at the end. So an unforeseen cycle costs time and hides no
+axiom. -/
+partial def axiomsOf (env : Environment) (n : Name) : StateM AxSt (Array Name) := do
+  if let some r := (← get).memo[n]? then return r
+  if (← get).busy.contains n then
+    modify fun s => { s with cyc := true }
+    return #[]
+  let union (es : List Expr) (skip : List Name) : StateM AxSt (Array Name) := do
+    let mut out : Array Name := #[]
+    let cs : Array Name := es.foldl (fun acc e => acc ++ e.getUsedConstants) (#[] : Array Name)
+    for c in cs do
+      if skip.contains c then continue
+      let xs ← axiomsOf env c
+      for x in xs do
+        unless out.contains x do out := out.push x
+    return out
+  match env.find? n with
+  | some (.ctorInfo v) => do
+    let r ← axiomsOf env v.induct
+    modify fun s => { s with memo := s.memo.insert n r }
+    return r
+  | some (.inductInfo v) => do
+    let infos :=
+      v.all.filterMap fun i => match env.find? i with | some (.inductInfo w) => some w | _ => none
+    let ctors := infos.flatMap (·.ctors)
+    let block := v.all ++ ctors
+    modify fun s => { s with busy := block.foldl (·.insert ·) s.busy }
+    let r ← union (infos.map (·.type) ++ ctors.filterMap fun c => (env.find? c).map (·.type)) block
+    modify fun s =>
+      { s with
+        busy := block.foldl (·.erase ·) s.busy,
+        memo := block.foldl (fun m c => m.insert c r) s.memo }
+    return r
+  | some ci => do
+    modify fun s => { s with busy := s.busy.insert n }
+    let es : List Expr := match ci with
+      | .defnInfo v => [v.type, v.value]
+      | .thmInfo v => [v.type, v.value]
+      | .opaqueInfo v => [v.type, v.value]
+      | .quotInfo _ => []
+      | other => [other.type]
+    let r0 ← union es [n]
+    let r := if ci matches .axiomInfo _ then r0.push n else r0
+    modify fun s => { s with busy := s.busy.erase n, memo := s.memo.insert n r }
+    return r
+  | none => return #[]
+
+/-- The search for the verdict on choice: below the constants on `stack`, through the values of
+definitions and opaque constants, the library's and others alike. Theorems are not entered. A pair
+`(a, b)` in `allow` (choice-allow.txt) stops the step from `a` to `b`, and no other step to `b`.
+Returns the first path to `Classical.choice`, the constants visited, and the pairs that were
+used. -/
+partial def findChoice (env : Environment) (allow : List (Name × Name))
+    (stack : List (Name × List Name)) (seen : NameSet) (used : List (Name × Name)) :
+    Option (List Name) × NameSet × List (Name × Name) :=
+  match stack with
+  | [] => (none, seen, used)
+  | (n, path) :: rest =>
+    if n == ``Classical.choice then (some (n :: path).reverse, seen, used) else
+    if seen.contains n then findChoice env allow rest seen used else
+    let seen := seen.insert n
+    let val? := match env.find? n with
+      | some (.defnInfo d) => some d.value
+      | some (.opaqueInfo d) => some d.value
+      | _ => none
+    match val? with
+    | none => findChoice env allow rest seen used
+    | some v =>
+      let cs := v.getUsedConstants.toList
+      let cut := cs.filter fun m => allow.contains (n, m)
+      findChoice env allow
+        (((cs.filter fun m => !allow.contains (n, m)).map fun m => (m, n :: path)) ++ rest)
+        seen (used ++ cut.map fun m => (n, m))
+
+/-- A `headline` line of top-theorems.txt, as check.py hands it over: the theorem; its binders, each
+a constant applied to earlier binders (by position, from 0); the head of the conclusion; the
+conclusion's explicit arguments, each a constant applied to binders, with `true` for `walk`
+(searched for choice, with a verdict) and `false` for `report`; one witness for each binder (a
+numeral, or a closed constant of the library). -/
+abbrev Headline :=
+  Name × List (Name × List Nat) × Name × List (Bool × Name × List Nat) × List (Option Nat × Name)
+
+/-- The constant `c` applied to the binders at the positions `idx`, as that term looks below `depth`
+binders. Every position must be smaller than `depth`: the callers check that first. -/
+def termAt (c : Name) (idx : List Nat) (depth : Nat) : Expr :=
+  mkAppN (.const c []) (idx.toArray.map fun j => .bvar (depth - 1 - j))
+def termShown (c : Name) (idx : List Nat) : String :=
+  " ".intercalate (toString c :: idx.map fun j => s!"#{j}")
+
+def headBinders : Expr → List (BinderInfo × Expr)
+  | .forallE _ d b bi => (bi, d) :: headBinders b
+  | _ => []
+def dropBinders : Nat → Expr → Option Expr
+  | 0, e => some e
+  | k + 1, .forallE _ _ b _ => dropBinders k b
+  | _, _ => none
+
+/-- A numeral of type Nat as Lean elaborates it, `OfNat.ofNat Nat k (instOfNatNat k)`, becomes the
+bare literal `k`, so that both forms compare as the same term. Nothing else is changed. -/
+def plainNumerals (e : Expr) : Expr := e.replace fun x =>
+  match x with
+  | .app (.app (.app (.const ``OfNat.ofNat [.zero]) (.const ``Nat [])) (.lit (.natVal k))) (.app (.const ``instOfNatNat []) (.lit (.natVal k'))) => if k == k' then some (.lit (.natVal k)) else none
+  | _ => none
+
+def firstFew (xs : List String) (k : Nat) (rest : String := "all stand in the listing") : String :=
+  ", ".intercalate (xs.take k) ++
+    (if xs.length > k then s!" and {xs.length - k} more ({rest})" else "")
+
+def cnt (k : Nat) (one many : String) : String := if k == 1 then s!"1 {one}" else s!"{k} {many}"
+def cutAt (s : String) (k : Nat) : String :=
+  if s.length > k then (s.take k).toString ++ " ... (cut here)" else s
+
+/-- The four verdicts on the form of a headline: binders, head, arguments, hypotheses. The
+statement's terms are compared as they are in the compiled file: nothing in the statement is
+unfolded, and no annotation, `let` or ∃ is skipped (`headOf` and `coreOf` are not applied to it
+here). `hyps`: whether each binder at the head of the type is a proposition (`headlineInfo`).
+Returns the lines that say FAILED, the entries for what passed, the four verdicts as bare words
+(PASSED, FAILED, NOT TRIED; for `headStart`), and the constants in the implicit arguments, the
+library's and the others. After a fault in the binders or the head the later verdicts are not tried:
+there is nothing to compare them with. -/
+def judgeHeadline (mn : Array Name) (env : Environment) (t : TheoremVal)
+    (h : Headline) (hyps : Array Bool) :
+    Array String × Array String × List String × List Name × List Name := Id.run do
+  let (n, bs, hd, as, ws) := h
+  let nb := bs.length
+  -- The binders' constants except Nat; the verdict on the binders requires that they are of the
+  -- library.
+  let mine := (bs.map (·.1)).eraseDups.filter (· != ``Nat)
+  let byPosition := " (binders are written by position: #0 is the first)"
+  -- Binders: exactly those that the line names, all explicit.
+  let mut f : Array String := #[]
+  unless isOurs mn env n do f := f.push "it is not a declaration of ours"
+  unless t.levelParams.isEmpty do f := f.push s!"it has {cnt t.levelParams.length "universe parameter" "universe parameters"}"
+  if (t.type.find? (·.isMData)).isSome then
+    f := f.push "its type holds an annotation (mdata), and this comparison steps over none"
+  let mut e := t.type
+  let mut i := 0
+  for (c, idx) in bs do
+    match e with
+    | .forallE nm d b bi =>
+      if idx.any (· ≥ i) then
+        f := f.push s!"the line's binder {i + 1} speaks of a binder that does not stand before it"
+      else if c != ``Nat && !isOurs mn env c then
+        f := f.push s!"the line's binder {i + 1} is of the type {c}, which is neither Nat nor a declaration of ours"
+      else
+        unless bi == .default do f := f.push s!"binder {i + 1} ({nm}) is implicit or an instance binder, not an explicit one"
+        unless d == termAt c idx i do f := f.push s!"the type of binder {i + 1} ({nm}) is not the term {termShown c idx}"
+      e := b
+      i := i + 1
+    | _ => f := f.push s!"its type begins with {cnt i "binder" "binders"}, and the line names {nb}"; break
+  if i == nb && e.isForall then
+    f := f.push s!"behind the {cnt nb "binder" "binders"} that the line names stands a further one ({e.bindingName!})"
+  unless f.isEmpty do return (#[s!"binders FAILED: {n}: {"; ".intercalate f.toList}{byPosition}"], #[], ["FAILED", "NOT TRIED", "NOT TRIED", "NOT TRIED"], [], [])
+  let mut held : Array String := #[s!"binders PASSED ({nb}, all explicit, and nothing else before the conclusion: {" | ".intercalate (bs.map fun (c, idx) => termShown c idx)}; #0 is the first binder)"]
+  unless mine.isEmpty do held := held.push s!"what the binders mean rests on these declarations of ours, which stand in the listing if the theorem's lists do: {mine}"
+  -- Head: an application of the named definition or inductive type of the library.
+  let noHead := ["PASSED", "FAILED", "NOT TRIED", "NOT TRIED"]
+  let some hci :=
+    env.find? hd | return (#[s!"head FAILED: {n}: {hd} does not exist"], held, noHead, [], [])
+  let kind := match hci with
+    | .inductInfo _ => "a structure or inductive type"
+    | .defnInfo _ => "a definition"
+    | _ => ""
+  if e.getAppFn != .const hd [] then return (#[s!"head FAILED: {n}: what follows the binders is not an application of {hd}; at its head stands {match e.getAppFn with | .const c _ => (if c == hd then s!"{c} with universe levels" else toString c) | .letE .. => "a let" | .lam .. => "a function" | .bvar _ => "a binder" | _ => "no constant"}"], held, noHead, [], [])
+  if !isOurs mn env hd || kind.isEmpty then
+    return (#[s!"head FAILED: {n}: {hd} is not a definition, structure or inductive type of ours"],
+        held, noHead, [], [])
+  held := held.push s!"head PASSED: {hd} ({kind}, module {(modOf mn env hd).getD .anonymous})"
+  let mut bad : Array String := #[]
+  -- Arguments. An implicit one must be an argument of the inductive type of a later explicit
+  -- binder, so that the explicit arguments fix it.
+  let args := e.getAppArgs
+  let hb := (headBinders hci.type).toArray
+  let mut g : Array String := #[]
+  let mut nImpl := 0
+  let mut inImpl : Array Name := #[]  -- the constants in the implicit arguments
+  if dropBinders hb.size hci.type != some (.sort .zero) then
+    g := g.push s!"the type of {hd} does not end in Prop behind its binders"
+  if hb.size != args.size then
+    g := g.push s!"{hd} has {hb.size} binders and is applied to {args.size} arguments"
+  else
+    let mut rest := as
+    let mut k := 0
+    for p in [0:hb.size] do
+      match hb[p]!.1 with
+      | .default =>
+        k := k + 1
+        match rest with
+        | [] => g := g.push s!"explicit argument {k} is not named in the line"
+        | (walk, c, idx) :: more =>
+          rest := more
+          if idx.any (· ≥ nb) then
+            g := g.push s!"the line's argument {k} speaks of a binder that there is not"
+          else if args[p]! != termAt c idx nb then
+            g := g.push s!"explicit argument {k} is not the term {termShown c idx}"
+          else match env.find? c with
+            | some (.defnInfo d) =>
+              if !isOurs mn env c then g := g.push s!"{c} is not a declaration of ours"
+              else if walk then match dropBinders idx.length d.type with
+                | some r => if (headOf r).isForall then g := g.push s!"{c} takes more arguments than the statement gives it, so that something else could be handed to it"
+                | none => g := g.push s!"the type of {c} does not begin with {idx.length} binders"
+            | _ => g := g.push s!"{c} is not a definition"
+      | .instImplicit =>
+        g := g.push
+          s!"binder {p + 1} of {hd} is an instance binder: what is handed over there is not judged by this tool"
+      | _ =>
+        nImpl := nImpl + 1
+        for c in args[p]!.getUsedConstants do
+          unless inImpl.contains c do inImpl := inImpl.push c
+        let fixed := (List.range hb.size).any fun q =>
+          q > p && hb[q]!.1 == .default && hb[q]!.2.getAppArgs.contains (.bvar (q - 1 - p)) &&
+            (match hb[q]!.2.getAppFn with
+              | .const T _ => (env.find? T matches some (.inductInfo _))
+              | _ => false)
+        unless fixed do g := g.push s!"the implicit binder {p + 1} of {hd} is no argument of the inductive type of an explicit binder, so that the explicit arguments do not fix it"
+    unless rest.isEmpty do g := g.push s!"the line names {as.length} explicit arguments, {hd} has {k}"
+  let implOurs := inImpl.toList.filter (isOurs mn env)
+  let implOthers := inImpl.toList.filter (!isOurs mn env ·)
+  let names (xs : List Name) : String :=
+    if xs.isEmpty then "none"
+    else firstFew (xs.map toString) 40 "all stand in the listing's statement in full"
+  let implText := if nImpl == 0 then "implicit: none"
+    else s!"implicit: {nImpl}, fixed up to unfolding by the types of the explicit ones; constants of ours in them: {names implOurs}; constants in them that are not ours: {names implOthers}"
+  if g.isEmpty then held := held.push s!"arguments PASSED (explicit: {as.length}, definitions of ours applied to binders, as the line has them: {" | ".intercalate (as.map fun (walk, c, idx) => (if walk then "walk " else "report ") ++ termShown c idx)}; {implText})"
+  else bad := bad.push s!"arguments FAILED: {n}: {"; ".intercalate g.toList}{byPosition}"
+  -- Hypotheses: one closed witness for each binder.
+  let mut w : Array String := #[]
+  let mut terms : Array Expr := #[]
+  if ws.length != nb then w := w.push s!"the line names {ws.length} witnesses for {nb} binders"
+  else
+    for ((c, idx), (lit, wn)) in bs.zip ws do
+      let ty := mkAppN (.const c []) (idx.toArray.map fun j => terms[j]!)
+      let isHyp := hyps[terms.size]?.getD false
+      match lit with
+      | some v =>
+        unless c == ``Nat && idx.isEmpty do w := w.push s!"the numeral {v} is named as a witness for a binder of type {termShown c idx}"
+        terms := terms.push (.lit (.natVal v))
+      | none =>
+        terms := terms.push (.const wn [])
+        if c == ``Nat then
+          w := w.push s!"the witness for a binder of type Nat is a numeral, not {wn}"
+        else match env.find? wn with
+          | none =>
+            w := w.push s!"{wn} does not exist among the modules that are loaded with the theorem"
+          | some ci =>
+            if !isOurs mn env wn then w := w.push s!"{wn} is not a declaration of ours"
+            else if isHyp && !(ci matches .thmInfo _) then
+              w := w.push s!"the binder is a proposition, and its witness {wn} is not a theorem"
+            else if !isHyp && !(ci matches .defnInfo _) then
+              w := w.push s!"the binder is data, and its witness {wn} is not a definition"
+            else if !ci.levelParams.isEmpty then w := w.push s!"{wn} has universe parameters"
+            else if plainNumerals ci.type != ty then
+              w := w.push s!"the type of {wn}, as it stands, is not the type of its binder at the witnesses before it"
+  if w.isEmpty then held := held.push s!"hypotheses PASSED (the binders are met together at: {" | ".intercalate (ws.map fun (lit, wn) => match lit with | some v => toString v | none => toString wn)})"
+  else bad := bad.push s!"hypotheses FAILED: {n}: {"; ".intercalate w.toList}{byPosition}"
+  return (bad, held,
+    ["PASSED", "PASSED", if g.isEmpty then "PASSED" else "FAILED",
+      if w.isEmpty then "PASSED" else "FAILED"],
+    implOurs, implOthers)
+
+/-- Whether the meaning of `n` reaches `Classical.choice`, by the steps of `meaningOf`, through the
+library's constants and others alike. The answers are cached; as in `axiomsOf`, a block of mutual
+inductive types with all their constructors gets one answer, because they refer to each other. -/
+partial def reachesChoice (env : Environment) (n : Name) : StateM (Std.HashMap Name Bool) Bool := do
+  if n == ``Classical.choice then return true
+  if let some b := (← get)[n]? then return b
+  let anyOf (es : List Expr) (skip : List Name) : StateM (Std.HashMap Name Bool) Bool := do
+    let mut r := false
+    for e in es do
+      for c in e.getUsedConstants do
+        unless r || skip.contains c do r := (← reachesChoice env c)
+    return r
+  match env.find? n with
+  | some (.ctorInfo v) => do
+    let r ← reachesChoice env v.induct
+    modify (·.insert n r)
+    return r
+  | some (.inductInfo v) => do
+    let infos :=
+      v.all.filterMap fun i => match env.find? i with | some (.inductInfo w) => some w | _ => none
+    let ctors := infos.flatMap (·.ctors)
+    let block := v.all ++ ctors
+    let r ← anyOf (infos.map (·.type) ++ ctors.filterMap fun c => (env.find? c).map (·.type)) block
+    modify fun m => block.foldl (fun m c => m.insert c r) m
+    return r
+  | some ci => do
+    -- No other kind of constant that a safe declaration can mention refers back. With false entered
+    -- first the search would end even if one did (a cached answer could then be wrongly false).
+    modify (·.insert n false)
+    let r ← anyOf (meaningOf ci).1 [n]
+    modify (·.insert n r)
+    return r
+  | none => return false
+
+/-- The data of a report on choice. From `roots` (of the library) the search follows `meaningOf`
+through the library. Returns how many constants it visits, and every step from one of them to a
+constant outside the library whose meaning reaches `Classical.choice`. `others`: outside constants
+at the starting point itself (in an implicit argument); each is tested too, and a hit is a step from
+the anonymous name. -/
+def choiceSteps (mn : Array Name) (env : Environment) (roots others : List Name) :
+    StateM (Std.HashMap Name Bool) (Nat × Array (Name × Name)) := do
+  let mut seen : NameSet := {}
+  let mut todo := roots
+  let mut steps : Array (Name × Name) := #[]
+  for c in others do
+    if ← reachesChoice env c then steps := steps.push (.anonymous, c)
+  while !todo.isEmpty do
+    let n := todo.head!
+    todo := todo.tail!
+    if seen.contains n then continue
+    seen := seen.insert n
+    if let some ci := env.find? n then
+      let (es, ns) := meaningOf ci
+      for c in (es.foldl (fun acc e => acc ++ e.getUsedConstants) ns.toArray).toList.eraseDups do
+        if isOurs mn env c then todo := c :: todo
+        else if ← reachesChoice env c then steps := steps.push (n, c)
+  return (seen.size, steps.qsort fun a b => a.1.lt b.1 || (a.1 == b.1 && a.2.lt b.2))
+
+/-- One report on choice for a headline. `label`: what the line calls it. `pre`: text of the audit's
+that comes first. `roots`, `others`: as in `choiceSteps`. `post`: text from the library, which comes
+last: a name in guillemets can contain any words, so the audit's findings must come before it.
+`tried`: whether the search can be made at all. -/
+structure ReportJob where
+  label : String
+  pre : String := ""
+  roots : List Name
+  others : List Name := []
+  post : String := ""
+  tried : Bool := true
+
+/-- One report on choice for the headline `n`, no verdict: its line for the result file, and its
+text for the listing, which writes out all steps once (`first`: the theorem that has them
+already). -/
+def reportOn (mn : Array Name) (env : Environment) (n : Name)
+    (j : ReportJob) (first : Option Name) :
+    StateM (Std.HashMap Name Bool) (String × String) := do
+  unless j.tried do return (s!"{n}, below {j.label}, no verdict: NOT TRIED: {j.pre}", "")
+  let r ← choiceSteps mn env j.roots j.others
+  let k : Nat := r.1
+  let steps : Array (Name × Name) := r.2
+  let step := fun ((a, b) : Name × Name) (sep : String) =>
+    (if a.isAnonymous then "(it stands there itself)" else toString (shown a)) ++ sep ++ toString b
+  let out := steps.filter fun ((_, b) : Name × Name) =>
+    (`Classical).isPrefixOf b || b == ``Exists.choose || b == `Nonempty.some
+  let from_ := ((steps.map (·.1)).toList.eraseDups).filter (!·.isAnonymous)
+  let to_ := ((steps.map (·.2)).qsort Name.lt).toList.eraseDups
+  let byRoot :=
+    (to_.map (·.getRoot)).eraseDups.map fun r => s!"{r} {(to_.filter (·.getRoot == r)).length}"
+  let found := if steps.isEmpty then "by these steps Classical.choice is not reached"
+    else s!"Classical.choice is reached from {from_.length} of them{if steps.any (·.1.isAnonymous) then ", and from constants that are not ours and stand there themselves" else ""}, by steps to constants that are not ours, {to_.length} in number (by the first part of their names: {firstFew byRoot 30}): {firstFew (to_.map toString) 12}; steps among these to Classical.*, Exists.choose or Nonempty.some outright: {out.size}{if out.isEmpty then "" else ": " ++ firstFew (out.toList.map (step · " > ")) 12}"
+  let line := s!"{n}, below {j.label}, no verdict: {j.pre}walked through types, values of definitions and constructors, of a theorem the statement alone; constants of ours met: {k}; {found}{j.post}"
+  let all := if steps.isEmpty then "none" else match first with
+    | some f => s!"the same list as under {f}"
+    | none => " ".intercalate (steps.toList.map (step · ">"))
+  return (line, s!"=== {n}: where Classical.choice is reached below {j.label} ({steps.size} steps to a constant that is not ours and reaches it): {all}\n")
+
+/-- What Lean itself must be asked about a headline: whether each binder at the head of the type is
+a proposition; and, for the constant of each binder's type other than Nat, its constructors or its
+value as Lean prints them. -/
+def headlineInfo (env : Environment) (t : TheoremVal) (h : Headline) :
+    MetaM (Array Bool × List (Name × String)) := do
+  let hyps ← forallTelescope t.type fun xs _ => xs.mapM fun x => do isProp (← inferType x)
+  let built ← ((h.2.1.map (·.1)).eraseDups.filter (· != ``Nat)).mapM fun c => do
+    match env.find? c with
+    | some (.inductInfo v) =>
+      let cs ← v.ctors.mapM fun k => do return s!"{k} : {← ppExpr ((env.find? k).map (·.type) |>.getD default)}"
+      return (c, cutAt (flat s!"a structure or inductive type with {cnt cs.length "constructor" "constructors"}: {"; ".intercalate cs}") 700)
+    | some (.defnInfo d) =>
+      return (c, cutAt (flat s!"a definition with the value {← ppExpr d.value}") 700)
+    | _ => return (c, "neither a definition nor an inductive type")
+  return (hyps, built)
+
+/-- The beginning of a headline's line: its five verdicts as bare words. `words`: the four on the
+form. `held`: the line's entries; those on choice are counted (each entry begins with the audit's
+own words). `nWalk`: the number of constants marked `walk`. Choice is not tried unless the verdict
+on the arguments is PASSED. -/
+def headStart (words : List String) (held : Array String) (nWalk : Nat) : String :=
+  let k := (held.filter (·.startsWith "choice PASSED below ")).size
+  let choice := if words[2]? != some "PASSED" then "choice NOT TRIED"
+    else if k == nWalk then s!"choice PASSED below all that are marked walk ({k})"
+    else s!"choice FAILED below {nWalk - k} of the {nWalk} that are marked walk"
+  s!"headline; {", ".intercalate ((["binders", "head", "arguments", "hypotheses"].zip words).map fun (a, b) => s!"{a} {b}")}, {choice}; "
+
+/-- A headline's reports, in order: below each binder's constant except Nat, each argument marked
+`report`, each witness that is a constant, and the implicit arguments (all constants in them).
+`bindersHeld`: only then do the line's binders and the theorem's agree, so that `hyps` is about the
+line's binders. `argsHeld`: only then is it certain that all implicit arguments have been looked
+at. -/
+def reportJobs (h : Headline) (hyps : Array Bool) (built : List (Name × String))
+    (bindersHeld argsHeld : Bool) (implOurs implOthers : List Name) : List ReportJob := Id.run do
+  let (_, bs, _, as, ws) := h
+  let mut jobs : List ReportJob := []
+  let mut done : List Name := []
+  for (c, _) in bs, i in List.range bs.length do
+    unless c == ``Nat || done.contains c do
+      done := c :: done
+      jobs := jobs ++ [{ label := toString c, roots := [c], post := s!"; OF WHAT IT IS BUILT, in the tree's own words as Lean prints them: {(built.lookup c).getD ""}"
+                         pre := if !bindersHeld then "named among the binders by the line; the binders FAILED, so whether it is a hypothesis or data is NOT TRIED; "
+                           else if hyps[i]?.getD false then "a hypothesis among the binders; "
+                           else "the type of a binder that is DATA; WHAT SUCH A BINDER HANDS TO THE OTHER CONSTANTS IS NOT WALKED, so read at the end of this line, and in the listing for the types of ours that are named there, whether it can carry a function; " }]
+  for (walk, c, _) in as do
+    unless walk || done.contains c do
+      done := c :: done
+      jobs := jobs ++ [{ label := toString c, roots := [c] }]
+  for (lit, w) in ws, i in List.range ws.length do
+    unless lit.isSome || done.contains w do
+      done := w :: done
+      jobs :=
+        jobs ++ [{ label := toString w, roots := [w], pre := s!"the witness for binder {i + 1}; " }]
+  return jobs ++
+    [if argsHeld then
+            { label := "the implicit arguments", roots := implOurs, others := implOthers,
+              pre := "from all constants that stand in them, ours and others'; " }
+        else
+          { label := "the implicit arguments", roots := [], tried := false,
+            pre := "the binders, the head or the arguments FAILED" }]
+
+/-- Names and strings go from a part to the audit ("Parts" below) as hexadecimal digits, so that no
+space, newline or unusual character can break a line. `hexOf s`: the hex digits of the UTF-8 bytes
+of `s`. -/
+def hexOf (s : String) : String :=
+  String.join (s.toUTF8.toList.map fun b =>
+    String.singleton (Nat.digitChar (b.toNat / 16)) ++
+      String.singleton (Nat.digitChar (b.toNat % 16)))
+def hexVal (c : Char) : Option Nat :=
+  if '0' ≤ c && c ≤ '9' then some (c.toNat - 48)
+  else if 'a' ≤ c && c ≤ 'f' then some (c.toNat - 87)
+  else none
+def unhexBytes : List Char → Option (List UInt8)
+  | [] => some []
+  | [_] => none
+  | a :: b :: r => do return ((← hexVal a) * 16 + (← hexVal b)).toUInt8 :: (← unhexBytes r)
+/-- Inverse of `hexOf`. Returns `none` for an odd number of digits, a character that is not a hex
+digit, or bytes that are not UTF-8. -/
+def unhex (s : String) : Option String :=
+  (unhexBytes s.toList).bind fun bs => String.fromUTF8? (ByteArray.mk bs.toArray)
+/-- A name as one field: its components separated by "."; a string component is "s" followed by its
+hex digits (none for the empty string), a numeric component is "n" followed by the number; the
+anonymous name is "-". -/
+def nameParts : Name → List String
+  | .anonymous => []
+  | .str p s => nameParts p ++ ["s" ++ hexOf s]
+  | .num p k => nameParts p ++ ["n" ++ toString k]
+def nameField (n : Name) : String := if n.isAnonymous then "-" else ".".intercalate (nameParts n)
+def fieldName (f : String) : Option Name :=
+  if f == "-" then some .anonymous else if f.isEmpty then none else
+  (f.splitOn ".").foldlM (fun (p : Name) (x : String) =>
+    if x.startsWith "s" then (unhex (x.drop 1).toString).map (Name.str p ·)
+    else if x.startsWith "n" then ((x.drop 1).toString.toNat?).map (Name.num p ·)
+    else none) .anonymous
+
+end LibraryAudit
+
+/-- Lean's tables through which a module programs Lean. Their entries are counted for each module in
+the first pass (`tables`) and printed in the lines on syntax. An `initialize` leaves an entry here
+and a declaration of type `IO Unit`, which mentions no name under `Lean`. -/
+def LibraryAudit.progTables : List Name :=
+  [`Lean.regularInitAttr, `Lean.builtinInitAttr, `Lean.Elab.macroAttribute,
+    `Lean.Elab.Command.commandElabAttribute, `Lean.Elab.Term.termElabAttribute,
+    `Lean.Elab.Tactic.tacticElabAttribute, `Lean.Parser.parserExtension,
+    `Lean.PrettyPrinter.Delaborator.delabAttribute,
+    `Lean.PrettyPrinter.Delaborator.appUnexpanderAttribute, `Lean.Meta.Simp.simprocExtension,
+    `Lean.Meta.Simp.simprocSEvalExtension, `Lean.Meta.Simp.simprocDeclExt,
+    `Lean.Elab.Do.doElemElabAttribute, `Lean.Elab.Command.inductiveElabAttr,
+    `Lean.Elab.Tactic.Grind.grindTacElabAttribute, `Lean.Elab.Tactic.Try.tryTacticElabAttribute,
+    `Lean.Elab.Term.Quotation.precheckAttribute]
+-- Not on the list: `Lean.Elab.Term.elabAsElim`, the mark that Lean itself puts on `casesOn`,
+-- `recOn` and the like of every inductive type; it programs nothing. Mathlib's own tables are not
+-- looked at.
+
+/-- Lean's own rule (Lean/Environment.lean): two modules may prove the same theorem (same name,
+type, universe parameters; `all` is compared here too). So equation lemmas (`foo.eq_1`, `eq_def`,
+`congr_simp`) can be in several modules. -/
+def LibraryAudit.sameThm (a b : ConstantInfo) : Bool := match a, b with
+  | .thmInfo x, .thmInfo y =>
+    x.name == y.name && x.type == y.type && x.levelParams == y.levelParams && x.all == y.all
+  | _, _ => false
+
+open LibraryAudit in
+run_cmd do
+  let mut failed : Nat := 0
+  let os : NameSet := ourModules.foldl (·.insert ·) {}
+  -- Parts, 1 of 4. The audit runs this file again for a later group (2 of 4), with the group's
+  -- number in AUDIT_PART. check.py removes that variable from the audit's environment: an audit
+  -- that finds it set runs as a part and does not print the closing line, so check.py fails. A
+  -- value that is no number is an error.
+  let part? : Option Nat ← match (← IO.getEnv "AUDIT_PART") with
+    | none => pure none
+    | some v => match v.toNat? with
+      | some k => pure (some k)
+      | none =>
+        throwError "AUDIT: the environment variable AUDIT_PART is set and holds no number. \
+          It is the audit's own: unset it and run again"
+  -- A part limits its own run time: a thread sleeps for `partLimit` seconds and then exits the
+  -- process (`forceExit`, that is std::_Exit). No signal and no process id is used, and no part
+  -- outlives its limit, even if the audit that started it is gone. Not covered: a hang before this
+  -- line (Lean's start-up, `import Lean`, the definitions above); the audit then hangs too. The
+  -- limit guards against hangs and says nothing about speed.
+  if part?.isSome then
+    let _ ← IO.asTask (prio := .dedicated)
+      (do IO.sleep (partLimit * 1000).toUInt32; IO.Process.forceExit 4 : IO Unit)
+  -- Every line that `say` prints carries the nonce, so that no line printed by a file of the
+  -- library can pass for one of the audit's. A part prints only its PART lines.
+  let say (s : String) : Elab.Command.CommandElabM Unit :=
+    if part?.isSome && !s.startsWith "PART " then pure () else logInfo m!"AUDIT {nonce} {s}"
+  -- AUDIT_OUT must name a path at which nothing exists. The audit writes to that path alone,
+  -- deletes nothing, and never writes to or truncates a file that it did not create. The check
+  -- comes first, so that the error does not come after the whole audit. A symbolic link counts as
+  -- existing, even a dangling one (`symlinkMetadata` follows no link). If the check fails for
+  -- another reason (a missing or inaccessible directory), the path counts as free; creating the
+  -- file then fails at the end, and nothing is written. A part writes no result and skips the
+  -- check. The real lock is further down: the call that creates the file fails if the path exists.
+  let notSet := "AUDIT: the environment variable AUDIT_OUT is not set. It must name a \
+    path at which nothing exists: the audit writes its result there. check.py sets it: run the \
+    audit through check.py. Nothing was written"
+  let resultFile? ← IO.getEnv "AUDIT_OUT"
+  if part?.isNone then
+    let some f := resultFile? | throwError notSet
+    if (← (System.FilePath.mk f).symlinkMetadata.toBaseIO).toBool then
+      throwError "AUDIT: {f} exists already. The audit writes its result to the path in \
+        AUDIT_OUT and overwrites nothing. Set AUDIT_OUT to a path where \
+        nothing exists (a run that was broken off can have left the file). Nothing was changed"
+  -- Groups. Modules that declare the same name cannot be loaded together (a library may have such
+  -- modules on purpose, as rival attempts). So each module's compiled file is first read alone, as
+  -- data, to find such names, and the modules are sorted into groups such that no group, with all
+  -- that it imports of the library, contains two modules that clash. Every declaration is checked
+  -- in a group that contains it.
+  -- First, `progTables` is compared with the tables that this Lean has registered: a name that is
+  -- no table would always count 0, with no warning. A mismatch is printed and fails nothing.
+  let known := (← persistentEnvExtensionsRef.get).map (·.name)
+  let noTable := progTables.filter fun t => !known.contains t
+  unless noTable.isEmpty do say s!"syntax: THE AUDIT'S OWN LIST NAMES {noTable.length} TABLES THAT THIS LEAN DOES NOT HAVE, which therefore count nothing: {noTable}"
+  -- For each name: the different declarations under it, each with the modules that contain it.
+  let mut versions : Std.HashMap Name (Array (Array Name × ConstantInfo)) := {}
+  -- Every copy of a theorem that is in more than one module (`sameThm`), with its module. Lean
+  -- keeps one of them; which one follows the order of loading (by imports, not by names) and is not
+  -- asked here. The section on axioms searches all copies, each from its own module's file: a
+  -- search of "the later ones" would miss a copy with another axiom in the first module by name.
+  let mut copies : Array (Name × ConstantInfo) := #[]
+  let mut tables : Std.HashMap Name Nat := {}  -- per module: its entries in progTables
+  let mut clashes : Array (Name × Name × Name) := #[]
+  let mut imps : Std.HashMap Name (List Name) := {}
+  -- per module: the number of constants in its compiled file (used to check a part's count)
+  let mut sizes : Std.HashMap Name Nat := {}
+  let mut kinds : Array String := #[]
+  -- Kinds, first half. A second check after two text rules of check.py (RULES.txt). It reads each
+  -- module's compiled file as data, so it depends on no comment stripping and no import, and it
+  -- covers every module of the library. Its findings count under kinds.
+  -- (a) By the authors' reading of Lean 4.29.1 (`Lean.Compiler.LCNF.getDeclInfo?` in
+  -- Lean/Compiler/LCNF/ToDecl.lean; not tried), the code generator takes a definition's code from
+  -- the constant `f._unsafe_rec` if there is one, whoever created it. So every constant of the
+  -- library whose last name component is `companionPart` must look like Lean's own, which Lean
+  -- creates for every definition or instance by recursion: a definition of the kernel's class
+  -- "partial"; the name without that component is a constant of the same module, a safe definition
+  -- or a theorem, with the same type and universe parameters. (Beside a `partial def` the partner
+  -- is opaque: rejected, here as in the second half of kinds.) Fewer than `companionFloor` such
+  -- constants is a fault, so that a mistyped `companionPart` does not pass for a clean library.
+  -- Not detected: a constant that passes all four checks and has a different body. By the same
+  -- reading no syntax of Lean's own creates one; a program that calls `addDecl` could, and so could
+  -- an attribute or deriving handler of a package (the packages' sources were not read).
+  -- (b) No module of the library may have an entry in `initTables`: `initialize` and `@[init]` run
+  -- code, or set a constant, before main. A name in `initTables` that is no table of this Lean
+  -- would never count, so it is a fault. So is a compiled file with `isModule` set: it is only the
+  -- exported part, without private constants (`Lean.addDecl` in Lean/AddDecl.lean) and without the
+  -- init entries that are not marked meta (`registerParametricAttribute` in Lean/Attributes.lean,
+  -- `registerInitAttrUnsafe` in Lean/Compiler/InitAttr.lean).
+  -- (c) No module of the library may have a `csimp` entry: it makes the compiler put another
+  -- constant in a constant's place.
+  for t in initTables do
+    unless known.contains t do
+      kinds := kinds.push s!"the head names a table of initializers that this Lean does not \
+        have: {t}"
+  let mut nComp : Nat := 0
+  for m in ourModules do
+    let (data, _) ← readModuleData (← findOLean m)
+    if data.isModule then
+      kinds := kinds.push s!"the module {m}: its compiled file is of the module system (the \
+        header word module): the file that is read here holds the exported part alone, so \
+        constants and entries of initializers can be missing from it"
+    let isComp (c : Name) : Bool := match c with | .str _ s => s == companionPart | _ => false
+    let here : Std.HashMap Name ConstantInfo :=
+      if data.constNames.any isComp then
+        (data.constNames.zip data.constants).foldl (fun h (c, ci) => h.insert c ci) {}
+      else {}
+    imps := imps.insert m ((data.imports.toList.map (·.module)).filter os.contains)
+    sizes := sizes.insert m data.constNames.size
+    for c in data.constNames, ci in data.constants do
+      if isComp c then
+        nComp := nComp + 1
+        let why : List String :=
+          (if ci.isPartial then [] else ["it is no definition of the kernel's class partial"]) ++
+          (match here[c.getPrefix]? with
+          | none => ["the name in front of that part is no constant of the same module"]
+          | some q =>
+            (if (match q with
+                 | .defnInfo d => d.safety == .safe | .thmInfo _ => true | _ => false : Bool)
+             then [] else
+               ["the constant in front of that part is neither a safe definition nor a theorem"])
+            ++ (if q.type == ci.type && q.levelParams == ci.levelParams then [] else
+               ["the constant in front of that part has another type or other level parameters"]))
+        unless why.isEmpty do
+          kinds := kinds.push s!"{shown c}, in the module {m}: it has the last name part \
+            {companionPart} of the constants from which Lean's code generator takes a definition's \
+            code, and is not as Lean's own are: {"; ".intercalate why}"
+      -- Private names are not left out: a genuine one contains its module's name and so is in one
+      -- module only, but anyone can write `theorem _private.lem` in two.
+      let vs := versions[c]?.getD #[]
+      let k? := vs.findIdx? fun (_, old) => sameThm old ci
+      -- This module clashes with every module that has another version of the name, whether it
+      -- brings a new version or a copy of a known one.
+      for i in [0:vs.size] do
+        unless some i == k? do
+          for m0 in vs[i]!.1 do clashes := clashes.push (c, m0, m)
+      match k? with
+      | some k =>
+        let (ms, old) := vs[k]!
+        if ms.size == 1 then copies := copies.push (ms[0]!, old)  -- the first copy too, once
+        copies := copies.push (m, ci)
+        versions := versions.insert c (vs.set! k (ms.push m, old))
+      | none => versions := versions.insert c (vs.push (#[m], ci))
+    for (ext, es) in data.entries do
+      if initTables.contains ext && es.size > 0 then
+        kinds := kinds.push s!"the module {m}: {es.size} entries in Lean's table {ext}"
+      if ext == ``Lean.Compiler.CSimp.ext && es.size > 0 then
+        kinds := kinds.push s!"the module {m}: {es.size} csimp entries"
+      if progTables.contains ext then tables := tables.insert m ((tables[m]?.getD 0) + es.size)
+  if nComp < companionFloor then
+    kinds := kinds.push s!"{nComp} constants of ours have the last name part {companionPart}, \
+      and the head asks for at least {companionFloor}: Lean makes one beside every definition by \
+      recursion, so the part is mistyped or the modules are not the library's"
+  say s!"kinds, no verdict: {nComp} constants of ours have the last name part {companionPart} (the \
+      floor: {companionFloor}); of each, four things were asked in its own module's compiled file; \
+      entries were looked for in these tables of initializers: {initTables}"
+  let impsF := imps
+  let tablesF := tables
+  let closureOf (m : Name) : NameSet := Id.run do
+    let mut seen : NameSet := {}
+    let mut todo := [m]
+    while !todo.isEmpty do
+      let x := todo.head!
+      todo := todo.tail!
+      unless seen.contains x do
+        seen := seen.insert x
+        todo := (impsF[x]?.getD []) ++ todo
+    return seen
+  let pairs := (clashes.map fun (_, a, b) => (a, b)).toList.eraseDups
+  let clean (s : NameSet) : Bool := !pairs.any fun (a, b) => s.contains a && s.contains b
+  let mut groups : Array (List Name × NameSet) := #[]
+  let mut alone : List Name := []
+  -- For each module: the library's modules that it imports, itself included, and how many; worked
+  -- out once, here.
+  let mut closures : Std.HashMap Name (NameSet × Nat) := {}
+  for m in ourModules do
+    let cl := closureOf m
+    closures := closures.insert m (cl, cl.size)
+    if !clean cl then alone := m :: alone
+    else
+      let mut placed := false
+      for i in [0:groups.size] do
+        unless placed do
+          let u := cl.foldl (·.insert ·) groups[i]!.2
+          if clean u then
+            groups := groups.set! i (m :: groups[i]!.1, u)
+            placed := true
+      unless placed do groups := groups.push ([m], cl)
+  let clashNames : NameSet := clashes.foldl (fun s (c, _, _) => s.insert c) {}
+  -- A clashing name below another clashing name is not printed.
+  let isChild (c : Name) : Bool := Id.run do
+    let mut p := c.getPrefix
+    while !p.isAnonymous do
+      if clashNames.contains p then return true
+      p := p.getPrefix
+    return false
+  let shownClashes := clashes.filter fun (c, _, _) => !isChild c
+  for (c, a, b) in shownClashes.extract 0 20 do say s!"clashes: {c} is declared in {a} and in {b}"
+  -- One entry of `shownClashes` is a name and a pair of modules, so n modules that each declare
+  -- `main` make n(n-1)/2 entries. So each name is also printed once, and the summary has the number
+  -- of names first.
+  let mut perName : Std.HashMap Name (Nat × List Name) := {}
+  for (c, a, b) in shownClashes do
+    let (k, ms) := perName[c]?.getD (0, [])
+    let ms := if ms.contains a then ms else a :: ms
+    let ms := if ms.contains b then ms else b :: ms
+    perName := perName.insert c (k + 1, ms)
+  for (c, k, ms) in perName.toArray.qsort
+      (fun x y => x.2.1 > y.2.1 || (x.2.1 == y.2.1 && x.1.toString < y.1.toString)) do
+    say s!"clashes, by name: {c}: {k} pairs of modules, {ms.length} modules{if ms.length ≤ 6 then s!": {ms.reverse}" else ""}"
+  say s!"clashes, by name, no verdict: the {shownClashes.size} of the next line are pairs of modules; DISTINCT NAMES: {perName.size}"
+  say s!"clashes, no verdict: {perName.size} names are declared in more than one module of ours \
+      and are not copies of one theorem ({shownClashes.size} pairs of modules, added up name by \
+      name; names below such a name are left out); so the {ourModules.length} modules are judged \
+      in {groups.size} \
+      groups{if shownClashes.isEmpty then "" else ", and NO FILE CAN IMPORT THE WHOLE LIBRARY"}"
+  for m in alone do failed := failed + 1; say s!"clashes FAILED: the module {m} itself rests on two modules that clash: it cannot have compiled"
+  let t0 ← IO.monoMsNow
+  let lap (what : String) : Elab.Command.CommandElabM Unit := do say s!"time: {((← IO.monoMsNow) - t0) / 1000} s after the start: {what}"
+  -- For each set of named constants: the theorem under which the listing prints their list WHICH
+  -- PROTOCOL (it is printed once).
+  let mut protoSeen : Std.HashMap String Name := {}
+  let mut listed : NameSet := {}  -- declarations whose type and value are in the listing already
+  -- The search for choice below a named constant is made once.
+  let mut walks : Std.HashMap Name (Option (List Name) × Nat × List (Name × Name)) := {}
+  let mut judged : NameSet := {}  -- modules whose declarations have been checked
+  let mut nOurs : Nat := 0
+  let mut foreign : Array (Name × Name) := #[]
+  let mut nPrograms : Nat := 0
+  let mut nAux : Nat := 0
+  let mut maxProg : Nat := 0
+  let mut nAxSlow : Nat := 0
+  let mut genLines : Array String := #[]
+  let mut closedLines : Array String := #[]
+  -- The headlines' lines: one each, and one more for each report on choice.
+  let mut headLines : Array String := #[]
+  let mut nHead : Nat := 0
+  let mut nBareH : Nat := 0  -- headlines whose declarations are not in the listing
+  -- Under which theorem the listing writes out the steps of a report on choice (once).
+  let mut reportAt : Std.HashMap Name Name := {}
+  -- Closed theorems whose declarations are not in the listing, because listing-for.txt names
+  -- others.
+  let mut nBare : Nat := 0
+  let mut nCopies : Nat := 0
+  let mut topsDone : NameSet := {}
+  let mut usedEdges : List (Name × Name) := []
+  let mut listing : String := ""
+  let mut specs : Array Name := #[]
+  let mut outright : NameSet := {}
+  let mut under : NameSet := {}
+  -- The legend: how to read the lines on the named theorems.
+  if topTheorems.isEmpty && headlines.isEmpty then say "top theorems: NOTHING NAMED"
+  else say "HOW TO READ THE LINES OF THE NAMED THEOREMS. One line each, with what held and what is only reported; whatever did not hold has a line of its own, with the word in capitals. binders PASSED means: the type as it stands, annotations and lets at the head stepped over, begins with no ∀ or → and has no universe parameter. N binders after unfolding: of the definitions at the head; NEITHER A STRUCTURE NOR AN ∃ IS OPENED, so 0 does not say that no premise stands anywhere (ZKCP.IsZKCPArg is a structure); no verdict. reach: declarations of ours on which the STATEMENT rests; promised: with the scheme counted as one name and not entered; protocol: the scheme and what stands below it; no verdict. syntax: what programs Lean in the modules below the statement, AT LEAST; no verdict. choice PASSED: the scheme is a closed definition of ours, a direct argument of the statement, without Classical.choice in the values below it. The statements in full, the binders and all names stand in the listing."
+  -- For the headlines it comes in three lines, so that no printed line is very long: where output
+  -- is cut at a fixed length, one long line would lose its end.
+  unless headlines.isEmpty do
+    say "HOW TO READ THE LINES OF THE HEADLINES WITH NAMED BINDERS, 1 of 3: THE FORM. The file top-theorems.txt writes out the form of such a theorem, and the audit compares it with the compiled type AS TERMS: nothing is unfolded, stepped over or stepped through. Binders are written by position: #0 is the first. The line begins with the five verdicts as bare words (PASSED, FAILED, or NOT TRIED after a fault before it); what stands behind them says what was compared. binders PASSED: no universe parameter, no annotation; the type begins with exactly the named binders, each explicit and of exactly the named type, and no further ∀ or → follows. head PASSED: what follows is an application of the named predicate of ours; NOTHING BUT ITS NAME PINS IT: compare its definition in the listing. arguments PASSED: its explicit arguments are, in order, exactly the named definitions of ours applied to the named binders; it has no instance argument; each implicit argument is fixed, up to unfolding, by the type of an explicit one."
+    say "HOW TO READ THE LINES OF THE HEADLINES WITH NAMED BINDERS, 2 of 3: HYPOTHESES AND CHOICE. hypotheses PASSED: closed witnesses meet all binders together, so the theorem is not empty for want of a case; IT SAYS NOTHING ON WHAT A HYPOTHESIS MEANS: read its definition. choice PASSED below X: there is no Classical.choice in the values below X, which is walked AS A FUNCTION OF THE BINDERS. WHAT A BINDER HANDS IN IS NOT WALKED: a binder whose type can carry a function could hand in one that is picked by choice. So read the types of the binders that are data: the line 'NAME, below TYPE' prints at its end of what each is built, one level deep; the types of ours that are named there stand in the listing."
+    say "HOW TO READ THE LINES OF THE HEADLINES WITH NAMED BINDERS, 3 of 3: THE REPORTS. A line 'NAME, below X, no verdict' reports where the MEANING of X reaches Classical.choice: for the arguments without a verdict, the binders' types, the witnesses and the implicit arguments (from all constants that stand in these, ours and others'). This walk is wider than the verdict's: it goes through types, values of definitions and constructors. Mathlib's real numbers rest on choice, so the steps to Classical.*, Exists.choose and Nonempty.some outright are counted apart; THAT COUNT GOES BY THE NAME OF THE FIRST CONSTANT THAT IS NOT OURS: another constant of Mathlib's that picks by choice (Function.invFun, say) is not in it, so read the names."
+  -- Parts, 2 of 4. Lean does not release a loaded environment by itself (`Environment.freeRegions`
+  -- is unsafe and is not used here), so one process that loads all groups keeps them all in memory.
+  -- So each later group, with the exception below, is checked by a process of its own, a "part":
+  -- the program that runs this audit (`IO.appPath`; no PATH lookup, no wrapper), on this same file.
+  -- A part repeats the first pass and the grouping, which depend only on the definitions above and
+  -- the compiled files; it loads and checks its group, checks no named theorem, prints its results
+  -- and exits. It never starts a part.
+  -- The audit starts the parts first, before it loads any environment, at most `partSide` at a time
+  -- (never more than 8). Then it checks the first group itself and adds each part's results at that
+  -- group's position. If a part returns no complete result, the audit stops with an error, so that
+  -- no line reports success for a group that was not checked.
+  -- A later group whose new modules declare a named theorem's name gets no part: the audit checks
+  -- it itself, in order, so nothing about the named theorems passes between processes. A part in
+  -- whose environment such a name is a declaration from outside the library counts an error and is
+  -- rejected. That is stricter than a single process, which would report it ("not a declaration of
+  -- ours") only if it came to that declaration first.
+  -- The plan holds, for each group, who checks it and nine values that the audit compares with the
+  -- part's. The audit and every part compute it here, in the same way.
+  let versionsF := versions
+  let copiesF := copies
+  let sizesF := sizes
+  let namedMods : NameSet :=
+    (topTheorems.map (·.1) ++ headlines.map (·.1)).foldl
+      (fun s n => (versionsF[n]?.getD #[]).foldl (fun s (ms, _) => ms.foldl (·.insert ·) s) s) {}
+  let mut plan : Array (Bool × List Nat) := #[]
+  let mut seenM : NameSet := {}
+  for (grp, cover) in groups do
+    let seenNow := seenM
+    let allM : List Name := cover.foldl (fun acc m => m :: acc) []
+    let newM : List Name := allM.filter fun m => !seenNow.contains m
+    plan := plan.push (plan.isEmpty || newM.any namedMods.contains,
+      [groups.size, grp.length, allM.length, newM.length,
+       (hash grp).toNat, (hash allM).toNat, (hash newM).toNat,
+       (copiesF.filter fun (m, _) => cover.contains m && !seenNow.contains m).size,
+       newM.foldl (fun k m => k + (sizesF[m]?.getD 0)) 0])
+    seenM := cover.foldl (·.insert ·) seenM
+  let planF := plan
+  if let some k := part? then
+    unless k ≥ 1 && (planF[k - 1]?.map fun p => !p.1).getD false do throwError "AUDIT: there is no part {k}"
+  let kinds0 := kinds.size
+  let failed0 := failed
+  let mut got : Std.HashMap Nat
+      (List Nat × List (Name × Name) × List String × List Name × List Name × List Name) := {}
+  if part?.isNone then
+    let side := min 8 (max 1 partSide)
+    let file ← getFileName
+    let prog := (← IO.appPath).toString
+    let mut todo : List Nat :=
+      (List.range groups.size).filterMap fun i => if planF[i]!.1 then none else some (i + 1)
+    say s!"parts, no verdict: of the {groups.size} groups the first and \
+        {groups.size - todo.length - 1} later ones are judged in this process, {todo.length} each \
+        in a process of its own, at most {side} side by side; each of these ends itself after \
+        {partLimit} s at the latest"
+    while !todo.isEmpty do
+      let now := todo.take side
+      todo := todo.drop side
+      let mut ts : Array (Nat × Task (Except IO.Error IO.Process.Output)) := #[]
+      for k in now do
+        let t ← IO.asTask (prio := .dedicated) (IO.Process.output {
+          cmd := prog, args := #[file],
+          env := #[("AUDIT_PART", some (toString k)), ("AUDIT_OUT", none)] })
+        ts := ts.push (k, t)
+      for (k, t) in ts do
+        match (← IO.wait t) with
+        | .error e => failed := failed + 1; say s!"parts FAILED: the part {k} could not be run: {e}"
+        | .ok out =>
+          -- A line counts only if it begins with the nonce and the part's number.
+          let get (w : String) : List String :=
+            (out.stdout.splitOn "\n").filterMap fun l =>
+              let key := s!"AUDIT {nonce} PART {k} {w} "
+              if l.startsWith key then some (l.drop key.length).toString else none
+          let ns := match get "END" with | [e] => (e.splitOn " ").filterMap (·.toNat?) | _ => []
+          let fo := (get "foreign").map fun l => match l.splitOn "," with
+            | [a, n] => (do return ((← fieldName a), (← fieldName n)) : Option (Name × Name))
+            | _ => none
+          let ki := (get "kinds").map unhex
+          let (sp, ou, un) :=
+            ((get "specs").map fieldName,
+              (get "outright").map fieldName,
+              (get "under").map fieldName)
+          -- What the audit can verify of a part's four counts: the copies exactly; the declarations
+          -- between the number of constants in the group's new modules and that number minus the
+          -- copies (where two modules of the library prove the same theorem, Lean keeps one). The
+          -- other two counts and the contents of the five lists are taken as the part prints them.
+          -- Any output on a part's standard error (a PANIC, say) is an error.
+          -- Two cases are not covered, and in both an honest library is rejected: a theorem that a
+          -- new module and a package's module both contain, neither importing the other (Lean
+          -- counts it under the one loaded first; the first pass reads no package, so it is not a
+          -- copy here); and a library file written with Lean's module system (its base file, which
+          -- the first pass reads, has fewer constants than the loaded environment).
+          if out.exitCode == 0 && out.stderr.isEmpty && ns.length == 19 && ns[4]! == 0
+              && [fo.length, ki.length, sp.length, ou.length, un.length] == (ns.drop 5).take 5
+              && ns.drop 10 == planF[k - 1]!.2 && ns[1]! == planF[k - 1]!.2[7]!
+              && ns[0]! ≤ planF[k - 1]!.2[8]! && planF[k - 1]!.2[8]! ≤ ns[0]! + ns[1]!
+              && fo.all (·.isSome) && ki.all (·.isSome) && sp.all (·.isSome)
+              && ou.all (·.isSome) && un.all (·.isSome) then
+            got := got.insert k
+              (ns, fo.filterMap id, ki.filterMap id, sp.filterMap id,
+                ou.filterMap id, un.filterMap id)
+            lap s!"the part {k} has ended: {ns[0]!} declarations"
+          else
+            failed := failed + 1
+            if out.exitCode == 4 && ns.isEmpty then
+              say s!"parts FAILED: the part {k} ended with the code of its own limit \
+                ({partLimit} s)"
+            else
+              say s!"parts FAILED: the part {k} did not give a whole result (the next line says \
+                what came)"
+            say s!"parts: the part {k}: exit {out.exitCode}; its end line's numbers: {ns}; what \
+                this audit holds of its group: {planF[k - 1]!.2}; lines of its five lists: \
+                {[fo.length, ki.length, sp.length, ou.length, un.length]}; the end of its two \
+                streams: {((flat (out.stdout ++ " || " ++ out.stderr)).takeEnd 600).toString}"
+  if failed > failed0 then
+    throwError "AUDIT: {failed - failed0} parts gave no whole result (see the lines 'parts \
+      FAILED'). Nothing more is judged, so that no line says PASSED over a group that nobody judged"
+  let mut gi : Nat := 0
+  for (grp, cover) in groups do
+    gi := gi + 1
+    -- Parts, 3 of 4. In the audit: a part has checked this group; its results are added here, at
+    -- the group's position, so that every list keeps its order.
+    if part?.isNone && !planF[gi - 1]!.1 then
+      if let some (ns, fo, ki, sp, ou, un) := got[gi]? then
+        nOurs := nOurs + ns[0]!
+        nCopies := nCopies + ns[1]!
+        nAux := nAux + ns[2]!
+        nPrograms := nPrograms + ns[3]!
+        foreign := foreign ++ fo.toArray
+        kinds := kinds ++ ki.toArray
+        specs := specs ++ sp.toArray
+        outright := ou.foldl (·.insert ·) outright
+        under := un.foldl (·.insert ·) under
+        judged := cover.foldl (·.insert ·) judged
+      continue
+    -- In a part: the other groups are not loaded; the earlier ones count as checked.
+    if part?.isSome && part? != some gi then
+      judged := cover.foldl (·.insert ·) judged
+      continue
+    let env ← importModules (grp.toArray.map fun m => {module := m}) {} (loadExts := false)
+    let judgedNow := judged
+    -- Three caches, for this group alone: in another group a name may mean another declaration.
+    let mut adj : Std.HashMap Name (Array Name) := {}
+    let mut axMemo : AxSt := {}
+    let mut chMemo : Std.HashMap Name Bool := {}  -- which constants reach Classical.choice
+    let mn := env.header.moduleNames
+    let fresh : Array Bool := mn.map fun m => cover.contains m && !judgedNow.contains m
+    let ours := (env.constants.fold
+      (fun acc n _ =>
+        match env.getModuleIdxFor? n with
+        | some i => if fresh[i.toNat]! then acc.push n else acc
+        | none => acc)
+      #[]).qsort Name.lt
+    judged := cover.foldl (·.insert ·) judged
+    nOurs := nOurs + ours.size
+    -- The error of a part that "Parts, 2 of 4" describes.
+    if part?.isSome then
+      for n in topTheorems.map (·.1) ++ headlines.map (·.1) do
+        if (env.find? n).isSome && !isOurs mn env n then failed := failed + 1
+    -- Axioms. Lean's own collector runs on every declaration of the group's new modules. One state
+    -- serves them all; the axioms that a call adds to it are recorded with that call's declaration.
+    let mut st : CollectAxioms.State := {}
+    for n in ours do
+      let before := st.axioms.size
+      let (_, st') := ((CollectAxioms.collect n).run env).run st
+      st := st'
+      for a in st.axioms.extract before st.axioms.size do
+        unless a == ``propext || a == ``Classical.choice || a == ``Quot.sound do foreign := foreign.push (a, n)
+    -- The copies of "the same theorem" (`copies`) in this group's new modules. The loaded
+    -- environment has one of each, so the constants of each copy's type and proof are searched
+    -- here.
+    for (m, ci) in copies do
+      if cover.contains m && !judgedNow.contains m then
+        nCopies := nCopies + 1
+        for c in ci.type.getUsedConstants ++
+            ((ci.value? (allowOpaque := true)).map (·.getUsedConstants)).getD #[] do
+          let before := st.axioms.size
+          let (_, st') := ((CollectAxioms.collect c).run env).run st
+          st := st'
+          for a in st.axioms.extract before st.axioms.size do
+            unless a == ``propext || a == ``Classical.choice || a == ``Quot.sound do foreign := foreign.push (a, ci.name)
+    -- Kinds, second half: a declaration that is opaque, unsafe, partial, implemented_by, extern or
+    -- an axiom is a fault (kinds FAILED).
+    for n in ours do
+      let ci := (env.find? n).get!
+      let why := (if ci matches .opaqueInfo _ then ["opaque (also what 'partial def' makes)"]
+          else []) ++
+        (if ci.isUnsafe then ["unsafe"] else []) ++ (if ci.isPartial then ["partial"] else []) ++
+        (if (Compiler.getImplementedBy? env n).isSome then ["implemented_by"] else []) ++
+        (if isExtern env n then ["extern"] else []) ++
+        (if ci matches .axiomInfo _ then ["axiom"] else [])
+      -- The exception: Lean's own `foo._unsafe_rec` (see the first half). It is marked partial, and
+      -- the kernel lets no safe declaration mention it. Beside an ordinary definition it is no
+      -- fault. (Beside a `partial def` the parent itself is opaque, and is a fault.)
+      let auxOfPlain := match n with
+        -- The parent can be a theorem: an instance of a Prop (`Nonempty α`, say) by recursion.
+        | .str p "_unsafe_rec" =>
+          (match env.find? p with
+            | some (.defnInfo d) => d.safety == .safe
+            | some (.thmInfo _) => true
+            | _ => false)
+        | _ => false
+      -- The exception is for that one mark alone: an opaque constant, an extern or an
+      -- implemented_by under such a name is a fault.
+      let auxOfPlain := auxOfPlain && why == ["partial"]
+      if auxOfPlain then nAux := nAux + 1
+      unless why.isEmpty || auxOfPlain do kinds := kinds.push s!"{shown n}: {", ".intercalate why}"
+    -- Syntax: what programs Lean, from the compiled files and not from the text; no verdict. A
+    -- declaration counts if its type mentions a constant under `Lean`.
+    let speaksLean (n : Name) : Bool :=
+      ((env.find? n).get!).type.getUsedConstants.any fun c => (`Lean).isPrefixOf c
+    nPrograms := nPrograms + (ours.filter speaksLean).size
+    -- All such declarations in this group, each with its module; worked out once.
+    let inCover : Array Bool := mn.map cover.contains
+    let progs : Array (Name × Name) := env.constants.fold (fun acc c _ => match env.getModuleIdxFor? c with
+      | some i => if inCover[i.toNat]! && speaksLean c then acc.push (c, mn[i.toNat]!) else acc
+      | none => acc) #[]
+    lap s!"a group of {grp.length} modules is loaded; axioms, kinds and syntax of {ours.size} declarations are judged"
+    -- Specs: statements named Spec; no verdict. `specs`: the library's definitions of propositions
+    -- with `Spec` as a name component. `outright`, `under`: such names at the head of the
+    -- conclusion of a theorem of the library, without or with a binder that mentions such a name.
+    let isSpec (n : Name) : Bool := n.components.contains `Spec && !leanMade env n
+    specs := specs ++
+      ours.filter fun n =>
+        isSpec n &&
+          (match env.find? n with | some (.defnInfo d) => d.type.getForallBody.isProp | _ => false)
+    for n in ours do
+      if let some (.thmInfo t) := env.find? n then
+        if let some c := t.type.getForallBody.getAppFn.constName? then
+          if isSpec c then
+            let hyps := (Id.run do
+              let mut e := t.type
+              let mut bad := false
+              while e.isForall do
+                if e.bindingDomain!.getUsedConstants.any isSpec then bad := true
+                e := e.bindingBody!
+              return bad)
+            if hyps then under := under.insert c else outright := outright.insert c
+    -- Binders, reach, choice: the named theorems that this group contains. A headline goes the same
+    -- way as a closed theorem, with its constants marked `walk` in the place of `schemes`; where it
+    -- is treated otherwise, `hl` says so. The headlines come first, so that in the listing, which
+    -- prints each declaration once, the definitions below a headline are printed under it.
+    let named : List (Name × Bool × Nat × List Name × Option Headline) :=
+      if part?.isSome then [] else
+        (headlines.map fun h =>
+          (h.1, false, 0, ((h.2.2.2.1.filter (·.1)).map (·.2.1)).eraseDups, some h))
+        ++ topTheorems.map fun (n, g, k, ss) => (n, g, k, ss, none)
+    for (n, general, maxReach, schemes, hl) in named do
+      if topsDone.contains n then continue
+      match env.find? n with
+      | none => pure ()
+      | some (.thmInfo t) =>
+        topsDone := topsDone.insert n
+        -- What passed or is only reported, for the theorem's one line. Every failure gets a line of
+        -- its own, and the long texts go into the listing.
+        let mut held : Array String := #[]
+        unless isOurs mn env n do failed := failed + 1; say s!"binders FAILED: {n} is not a declaration of ours"
+        -- The statement in full, and its binders after the definitions at the head are unfolded.
+        let (inFull, red) ← runMeta env do
+          let s ← withOptions (fun o => o.setBool `pp.explicit true) <| ppExpr t.type
+          let r ← withTransparency .all <| forallTelescopeReducing t.type fun xs _ => xs.mapM fun x => do return flat s!"({← x.fvarId!.getUserName} : {← ppExpr (← inferType x)})"
+          return (toString s, r)
+        let (hyps, built) ← match hl with
+        | some h => runMeta env (headlineInfo env t h)
+        | none => pure (#[], [])
+        -- Binders. For a headline: the lines that say FAILED, what passed, the four verdicts on the
+        -- form as bare words, and the reports on choice. A closed theorem's type must begin with no
+        -- binder and have no universe parameter.
+        let (bad, ok, words, jobs) := match hl with
+          | some h => let (bad, ok, ws, implOurs, implOthers) := judgeHeadline mn env t h hyps; (bad, ok, ws, reportJobs h hyps built (ws.head? == some "PASSED") (ws[2]? == some "PASSED") implOurs implOthers)
+          | none => (#[], #[], [], [])
+        if general then held := held.push "general"
+        else if hl.isSome then
+          for b in bad do failed := failed + 1; say b
+          held := held ++ ok
+        else if (headOf t.type).isForall || !t.levelParams.isEmpty then failed := failed + 1; say s!"binders FAILED: the type of {n} begins with a binder, or has universe parameters ({t.levelParams.length})"
+        else held := held.push "binders PASSED"
+        held := held.push (s!"{red.size} binders after unfolding" ++ (match hl with
+          | some h => if words.head? == some "PASSED" && red.size > h.2.1.length then s!": MORE THAN THE {h.2.1.length} THAT THE LINE NAMES: THE HEAD UNFOLDS TO FURTHER ∀ OR →, WHICH MAY BE PREMISES: READ ITS DEFINITION" else ""
+          | none => ""))
+        -- The theorem's axioms (`axiomsOf` explains the two ways).
+        let (ax0, axMemo1) := (axiomsOf env n).run axMemo
+        axMemo := axMemo1
+        let ax ← if axMemo.cyc then do
+            nAxSlow := nAxSlow + 1
+            let (_, c) := ((CollectAxioms.collect n).run env).run {}
+            pure c.axioms
+          else pure ax0
+        held := held.push s!"axioms {(ax.qsort Name.lt).toList}"
+        -- Reach: the declarations of the library on which the statement depends.
+        let (r, adj1) := reach mn env os t.type.getUsedConstants.toList {} {} adj
+        adj := adj1
+        let all := r.toArray.qsort Name.lt
+        let read := all.filter fun c => !leanMade env c
+        let twice := (n :: schemes ++ all.toList).filter clashNames.contains
+        unless twice.isEmpty do failed := failed + 1; say s!"clashes FAILED: {n}, its scheme or a declaration on which its statement rests is declared in two modules, so that the name does not say which is meant: {twice.take 8}"
+        if let some h := hl then
+          let tw := (h.2.2.2.2.map (·.2)).filter clashNames.contains
+          unless tw.isEmpty do failed := failed + 1; say s!"clashes FAILED: a witness named for {n} is declared in two modules, so that the name does not say which is meant: {tw}"
+        let notCounted := all.filter fun c => leanMade env c
+        -- Two separate counts. Promised: the statement, with `schemes` counted and not entered.
+        -- Protocol: `schemes` and what they depend on. The first tells a reader what the theorem
+        -- says of any such constant, the second which constant it is.
+        let stopSet : NameSet := schemes.foldl (·.insert ·) {}
+        let (pm, adj2) := reach mn env os t.type.getUsedConstants.toList {} stopSet adj
+        let (pt, adj3) := reach mn env os schemes {} {} adj2
+        adj := adj3
+        let promised := (pm.toArray.filter fun c => !leanMade env c).qsort Name.lt
+        let protocol := (pt.toArray.filter fun c => !leanMade env c).qsort Name.lt
+        let protoSet : NameSet := protocol.foldl (·.insert ·) {}
+        if read.size == 0 then failed := failed + 1; say s!"reach FAILED: the statement of {n} rests on NO declaration of ours: it says nothing about this library"
+        else if general then
+          held := held.push s!"reach {read.size} (+{all.size - read.size} Lean's)"
+        else
+          held := held.push s!"reach {read.size}: promised {promised.size}, protocol {protocol.size}, both {(promised.filter protoSet.contains).size} (+{all.size - read.size} Lean's)"
+          if maxReach > 0 then
+            if promised.size ≤ maxReach then
+              held := held.push s!"reach PASSED (promised within the limit {maxReach})"
+            else failed := failed + 1; say s!"reach FAILED: what {n} promises rests on {promised.size} declarations of ours (limit {maxReach})"
+        let direct : NameSet :=
+          (n :: all.toList).foldl
+            (fun s c => match modOf mn env c with | some m => s.insert m | none => s) {}
+        let closuresF := closures
+        let mut below : NameSet := {}
+        -- The modules below the statement, for the counts on syntax. The largest closures come
+        -- first: then nearly every other module is in already, and a module that is in has brought
+        -- its whole closure with it.
+        for m in direct.toArray.qsort
+            (fun x y => ((closuresF[x]?.map (·.2)).getD 0) > ((closuresF[y]?.map (·.2)).getD 0)) do
+          unless below.contains m do
+            below := ((closuresF[m]?.map (·.1)).getD (closureOf m)).foldl (·.insert ·) below
+        let pr := ((progs.filter fun (_, m) => below.contains m).map (·.1)).qsort Name.lt
+        let ent := below.foldl (fun k m => k + (tablesF[m]?.getD 0)) 0
+        held := held.push
+          s!"syntax at least {pr.size} declarations and {ent} entries in {below.size} modules"
+        if pr.size > maxProg then maxProg := pr.size
+        -- The listing. A headline's witnesses, and what they depend on and the statement does not,
+        -- are printed with the rest: otherwise a witness picked by choice would be shown nowhere.
+        let witNames : List Name :=
+          match hl with
+          | some h => h.2.2.2.2.filterMap (fun (lit, w) => if lit.isSome then none else some w)
+          | none => []
+        let witExtra := ((reach mn env os witNames {} {} adj).1.toArray.filter fun c =>
+          !r.contains c && !leanMade env c).qsort Name.lt
+        let listedNow := listed
+        let protoAt := protoSeen[" ".intercalate (schemes.map toString)]?
+        let lst ← runMeta env do
+          let head := s!"=== {n}   [module {(modOf mn env n).getD .anonymous}]\nstatement: {← ppExpr t.type}\nstatement in full (without notations, with all implicit and instance arguments): {flat inFull}\nbinders after unfolding every definition at the head ({red.size}): {" ".intercalate red.toList}\nrests on {read.size} declarations of ours, and on {notCounted.size} that count as Lean's by its tables or by form and kind of the name.\n"
+          -- A general theorem gets its statement, binders and counts only, unless listing-for.txt
+          -- names it. The lists of names and the declarations are for the reader of the other
+          -- statements: with lists under every named theorem the file would grow very large.
+          if general && !listFor.contains n then return head
+          -- The listing is large, so if `listFor` (scripts/listing-for.txt) names anything, only
+          -- the theorems that it names get their lists and declarations. For another choice, change
+          -- listing-for.txt and run check.py again.
+          if !general && !listFor.isEmpty && !listFor.contains n then
+            return head ++
+              "(lists and declarations left out: the theorem is not named in listing-for.txt)\n"
+          let protoKey := " ".intercalate (schemes.map toString)
+          let mut s := head ++ s!"WHAT IS PROMISED ({promised.size}; the named constants counted and not entered): {" ".intercalate (promised.toList.map fun c => toString (shown c))}\n{if general then "(a general theorem: no constant is named beside it, so there is no list WHICH PROTOCOL) " else ""}WHICH PROTOCOL ({protocol.size}; the named constants {protoKey} and what stands below them): {match protoAt with | some first => s!"the same list as under {first}" | none => " ".intercalate (protocol.toList.map fun c => toString (shown c))}\n(each declaration is printed once in this file, under the first theorem with lists that rests on it)\ndeclarations that program Lean in the modules of ours on which the statement rests ({pr.size}): {" ".intercalate (pr.toList.map toString)}\n"
+          unless witNames.isEmpty do s := s ++ s!"THE WITNESSES {" ".intercalate (witNames.map toString)}, with what stands below them and not below the statement ({witExtra.size}): {" ".intercalate (witExtra.toList.map fun c => toString (shown c))}\n"
+          for c in (read ++ witExtra ++
+                notCounted.filter fun c => env.find? c matches some (.defnInfo _)).filter
+              fun c => !listedNow.contains c do
+            let ci := (env.find? c).get!
+            s := s ++ s!"\n--- {shown c}{if isPrivateName c then " (private)" else ""}  [{match ci with | .defnInfo _ => "def" | .thmInfo _ => "theorem" | .inductInfo _ => "inductive" | .ctorInfo _ => "constructor" | _ => "other"}, module {(modOf mn env c).getD .anonymous}]\ntype:  {← ppExpr ci.type}\n"
+            -- The type's entry names its constructors: each has an entry of its own, far away in
+            -- the order of names, and a second, easily satisfied constructor must not be missed.
+            if let .inductInfo iv := ci then s := s ++ s!"constructors: {iv.ctors}\n"
+            if let .defnInfo d := ci then
+              s := s ++ s!"value: {← ppExpr d.value}\n"
+              let cl := d.value.getUsedConstants.filter fun x =>
+                (`Classical).isPrefixOf x || x == ``Exists.choose || x == `Nonempty.some
+              unless cl.isEmpty do s := s ++ s!"NAMES DIRECTLY: {cl.toList.eraseDups}\n"
+          return s
+        if (lst.splitOn "failed to pretty print").length > 1 || (inFull.splitOn "failed to pretty print").length > 1 then failed := failed + 1; say s!"listing FAILED: under {n} a statement, a type or a value could not be printed: the reader would not see it"
+        listing := listing ++ lst ++ "\n"
+        unless (general && !listFor.contains n) ||
+            (!general && !listFor.isEmpty && !listFor.contains n) do
+          listed := (read ++ witExtra ++ notCounted).foldl (·.insert ·) listed
+          if protoAt.isNone then
+            protoSeen := protoSeen.insert (" ".intercalate (schemes.map toString)) n
+        -- Choice.
+        if schemes.isEmpty && !general then say s!"choice: NOTHING NAMED for {n}"
+        let args := (coreOf t.type).getAppArgs.map headOf
+        let others := (args.filterMap fun x => x.constName?).filter fun c =>
+          isOurs mn env c && !schemes.contains c
+        -- At most ten names, so that the line stays short: the verdicts on choice come after this
+        -- list, and if a very long line were cut they would be lost, and a sound library would
+        -- fail.
+        let oth := others.toList.eraseDups
+        unless general || oth.isEmpty do held := held.push s!"OTHER direct arguments of ours, not named and not walked for choice: {oth.take 10}{if oth.length > 10 then s!" and {oth.length - 10} more (all stand in the listing's statement in full)" else ""}"
+        -- Below a headline's constants the search is made only where the verdict on the arguments
+        -- is PASSED: otherwise nothing shows that they occur in the statement.
+        for sc in (if hl.isSome && words[2]? != some "PASSED" then [] else schemes) do
+          match env.find? sc with
+          | some (.defnInfo d) =>
+            if !isOurs mn env sc then failed := failed + 1; say s!"choice FAILED: {sc} is not a declaration of ours"
+            -- For a headline's constant the verdict on the arguments has already required that it
+            -- occurs in the statement, applied to binders alone, and takes nothing more.
+            else if hl.isNone && (headOf d.type).isForall then failed := failed + 1; say s!"choice FAILED: {sc} takes arguments: name the closed constant, to which nothing can be handed"
+            else if hl.isNone && !(args.any fun x => x.isConstOf sc) then failed := failed + 1; say s!"choice FAILED: {sc} is no direct argument of the statement of {n}: it is not shown to be the scheme of which the theorem speaks"
+            else
+              let w ← match walks[sc]? with
+                | some w => pure w
+                | none => do
+                  let (p, seen, used) := findChoice env choiceAllow [(sc, [])] {} []
+                  pure (p, seen.size, used)
+              walks := walks.insert sc w
+              match w with
+              | (some path, _, _) => failed := failed + 1; say s!"choice FAILED: below {sc} (for {n}): {" > ".intercalate (path.map fun x => toString (shown x))}"
+              | (none, seen, used) => usedEdges := usedEdges ++ used; held := held.push s!"choice PASSED below {sc} ({seen} walked{if used.isEmpty then "" else s!"; steps not taken: {used.eraseDups.map fun (a, b) => s!"{a} > {b}"}"}; {if isNoncomputable env sc then "marked noncomputable" else "compiled by Lean"})"
+          | some _ => failed := failed + 1; say s!"choice FAILED: {sc} is not a definition"
+          | none => failed := failed + 1; say s!"choice FAILED: {sc} does not exist"
+        -- One line for each theorem. The lines are gathered here and written to the result file
+        -- further down. A headline's line begins, after the theorem's name, with its verdicts as
+        -- bare words, before any other name from the library is printed. check.py looks there: a
+        -- name in guillemets can contain the words of a verdict.
+        let start := if hl.isSome then headStart words held schemes.length else ""
+        let line := s!"{n}: {start}{"; ".intercalate held.toList}"
+        if hl.isSome then
+          nHead := nHead + 1
+          unless listFor.isEmpty || listFor.contains n do nBareH := nBareH + 1
+          headLines := headLines.push line
+          -- The reports on choice, no verdict (`reportJobs` says below what).
+          for j in jobs do
+            -- Where a search starts from one constant of the library alone, its steps are written
+            -- out once, under the first theorem that has it; otherwise each time.
+            let key := match j.roots, j.others with | [x], [] => x | _, _ => .anonymous
+            let ((line, text), m) := (reportOn mn env n j reportAt[key]?).run chMemo
+            chMemo := m
+            headLines := headLines.push line
+            listing := listing ++ text
+            if !key.isAnonymous && reportAt[key]?.isNone then reportAt := reportAt.insert key n
+          unless jobs.isEmpty do listing := listing ++ "\n"
+        else unless general || listFor.isEmpty || listFor.contains n do nBare := nBare + 1
+        if hl.isSome then pure ()
+        else if general then genLines := genLines.push line
+        else closedLines := closedLines.push line  -- each failure has its own line already
+      | some _ => topsDone := topsDone.insert n; failed := failed + 1; say s!"binders FAILED: {n} is not a theorem"
+  -- Parts, 4 of 4. All five lists in full; the END line has the four counts, the errors of this
+  -- group (one kind: a named theorem's name that is not the library's in this environment), the
+  -- five lists' lengths, and the plan's nine values for this group as this process computed them.
+  if let some k := part? then
+    for (a, n) in foreign do say s!"PART {k} foreign {nameField a},{nameField n}"
+    for x in kinds.extract kinds0 kinds.size do say s!"PART {k} kinds {hexOf x}"
+    for n in specs do say s!"PART {k} specs {nameField n}"
+    for n in outright.foldl (fun acc n => n :: acc) [] do say s!"PART {k} outright {nameField n}"
+    for n in under.foldl (fun acc n => n :: acc) [] do say s!"PART {k} under {nameField n}"
+    let counts := [nOurs, nCopies, nAux, nPrograms, failed - failed0, foreign.size,
+      kinds.size - kinds0, specs.size, outright.size, under.size]
+    say s!"PART {k} END {" ".intercalate ((counts ++ planF[k - 1]!.2).map toString)}"
+    return
+  for n in topTheorems.map (·.1) ++ headlines.map (·.1) do
+    unless topsDone.contains n do failed := failed + 1; say s!"binders FAILED: {n} does not exist"
+  for (a, n) in foreign.extract 0 30 do say s!"axioms: another axiom is met below {shown n}: {a}"
+  -- The lines on the named theorems are the audit's result, and there can be thousands of them. So
+  -- they are written to the result file, and only their number is printed here.
+  let thmLines : Array String := (headLines ++ closedLines ++ genLines).map oneLine
+  say s!"named theorems: their lines, {thmLines.size} in number, stand in the result file and are not printed"
+  -- `nAxSlow` is counted in the loop above.
+  if nAxSlow > 0 then say s!"axioms of the named theorems: for {nAxSlow} of them Lean's own collector was begun anew, because the remembering walk had met a constant that refers back to one still being walked"
+  if foreign.isEmpty && nOurs > 0 && judged.size == ourModules.length then
+    say s!"axioms PASSED: every declaration that Lean attributes to a module of the library was \
+      checked: all {nOurs} declarations in all {judged.size} modules, and all {nCopies} copies of \
+      theorems that stand in more than one module (Lean keeps one of each; every copy is walked \
+      from its own module's file), depend on no axiom but propext, Classical.choice and Quot.sound"
+  else failed := failed + 1; say s!"axioms FAILED: {foreign.size} other axioms; {nOurs} declarations of ours judged, in {judged.size} of {ourModules.length} modules"
+  for k in kinds.extract 0 30 do say s!"kinds: {k}"
+  if kinds.isEmpty then
+    say s!"kinds PASSED: no declaration of ours is an axiom, opaque, unsafe or partial, or has \
+      implemented_by or extern; no module of ours has a csimp entry, or an entry in {initTables}, \
+      or is of the module system; all {nComp} constants with the last name part {companionPart} \
+      are as Lean's own. EXCEPT, and not counted: {nAux} declarations foo._unsafe_rec, which ARE \
+      marked partial: Lean makes one, for its compiler, beside every definition by recursion, and \
+      the kernel lets no safe declaration speak of it"
+  else failed := failed + 1; say s!"kinds FAILED: {kinds.size}"
+  for e in choiceAllow do
+    unless usedEdges.contains e do failed := failed + 1; say s!"choice FAILED: the entry {e.1} > {e.2} of choice-allow.txt stops nothing"
+  say s!"syntax, no verdict: in all {ourModules.length} modules of ours, {nPrograms} declarations program Lean"
+  say s!"syntax, no verdict: the most declarations that program Lean in the modules below ONE named statement: {maxProg}. AT LEAST: a run_cmd can change how a file is read and leave nothing in the compiled file. So, whatever these counts: the result is about the COMPILED definitions; read the listing, not the source."
+  say s!"syntax, no verdict: entries in Lean's tables of macros, elaborators, parsers, initializers, in all modules of ours: {ourModules.foldl (fun k m => k + (tablesF[m]?.getD 0)) 0}"
+  -- The result file: a first line with the nonce and the number of lines; the lines on the named
+  -- theorems; a separator line; the listing. check.py takes the file only if it has the sha256 that
+  -- is printed below, in a line with the nonce: so it can tell that the file is the one that this
+  -- run wrote.
+  -- The file is created by a call that fails if anything exists at the path, even a symbolic link
+  -- (mode `writeNew`: O_CREAT with O_EXCL). After that nothing is opened for writing by path,
+  -- renamed or deleted. sha256sum is looked up on PATH; a wrong sum only makes check.py, which
+  -- computes the sum itself, reject the file. sha256sum reads the file by path, so someone who may
+  -- delete files in this directory could replace it in the meantime. No call by path prevents that;
+  -- the caller should name a directory that only it uses, as check.py does. Of two audits with the
+  -- same path the second fails here or at the first check.
+  let some f := resultFile? | throwError notSet   -- cannot be none here: see the check at the start
+  let claim (p text : String) : IO Unit := do
+    let h ← try IO.FS.Handle.mk p .writeNew catch e =>
+      throw (IO.userError s!"AUDIT: {p} could not be created: something exists there, or the \
+        directory cannot be written. It was not touched. Lean's own words: {e}")
+    h.putStr text
+    h.flush
+  claim f (s!"AUDIT-RESULT 1 {nonce} {thmLines.size}\n"
+    ++ String.join (thmLines.toList.map (· ++ "\n"))
+    ++ "AUDIT-LISTING\n" ++ listing)
+  say s!"listing: closed theorems WITHOUT their lists and declarations in the listing (listing-for.txt names others): {nBare} of {closedLines.size}"
+  unless headlines.isEmpty do say s!"listing: headlines WITHOUT their lists and declarations in the listing (listing-for.txt names others): {nBareH} of {nHead}"
+  let h ← IO.Process.output { cmd := "sha256sum", args := #[f] }
+  say s!"result: the lines on the named theorems, {thmLines.size} in number, and the listing are \
+      written to the result file; sha256 of the whole file \
+      {(h.stdout.take 64).toString}"
+  say s!"listing: {listing.length} signs"
+  -- Specs, the summary.
+  let outrightF := outright
+  let underF := under
+  let open_ := (specs.filter fun n => !outrightF.contains n).qsort Name.lt
+  for l in chunks open_ 6 do say s!"specs, no theorem concludes it without a Spec hypothesis: {l}"
+  say s!"specs, no verdict: {specs.size} statements named Spec.*; concluded by a theorem of ours that takes no Spec.* as a hypothesis: {specs.size - open_.size}; only under such hypotheses: {(open_.filter underF.contains).size}; by none: {(open_.filter fun n => !underF.contains n).size}"
+  if failed == 0 then say "ALL PASSED" else throwError "AUDIT: {failed} checks failed"

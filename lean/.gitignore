@@ -1,0 +1,4 @@
+# Copyright 2026 Anthropic PBC
+# SPDX-License-Identifier: Apache-2.0
+# Lake's own directory: the downloaded packages and everything that a build writes.
+/.lake/

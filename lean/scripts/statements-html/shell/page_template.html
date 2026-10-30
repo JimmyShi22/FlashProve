@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<!--
+%%LICENCE%%
+-->
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta http-equiv="Content-Security-Policy" content="%%POLICY%%"/>
+<title>%%HTML_TITLE%%</title>
+<meta name="description" content="%%META_DESC%%"/>
+<style>
+%%CSS%%
+</style></head>
+<body><div class="shell">
+<div class="paper-col" id="paper"><div class="paper-inner wide">
+<div class="brand"><span>%%BRAND%%</span><span></span></div>
+<h1>%%H1%%</h1>
+<div class="subtitle">%%SUBTITLE%%</div>
+<div class="byline">%%BYLINE%%</div>
+<div class="setting">%%SETTING%%</div>
+<div class="legend-title">%%TILES_TITLE%%</div>
+<div class="tiles-note">%%TILES_NOTE%%</div>
+<div class="props">
+%%PROPS%%</div>
+<div class="legend-title">Card types</div>
+<div class="legend">
+%%LEGEND%%</div>
+<nav class="toc"><strong>Contents</strong><ul>%%TOC%%</ul></nav>
+%%CARDS%%
+<details class="appendix"><summary>%%APPENDIX_SUMMARY%%</summary>
+<p>All %%N_DECLS%% embedded declarations, searchable by name or file.</p>
+<input class="search" id="search" placeholder="%%SEARCH_HINT%%"/>
+<div class="decl-list" id="decl-list"></div></details>
+</div></div>
+<div class="lean-col" id="lean-col">
+<div class="lean-header"><span class="lean-header-file" id="lean-file"></span><span style="display:flex;gap:4px;flex-shrink:0">
+<button type="button" class="lean-btn" id="btn-proof" title="Show the proof">Show proof</button>
+<button type="button" class="lean-btn" id="btn-file" title="Show the embedded parts of the file">Whole file</button>
+<button type="button" class="lean-btn" id="btn-back" disabled>← Back</button>
+<button type="button" class="lean-btn" id="btn-close">Close</button></span></div>
+<div class="lean-meta" id="lean-meta" style="display:none"></div>
+<div class="lean-body" id="lean-body"><div class="placeholder">Click a Lean link to view the declaration here.</div></div>
+</div>
+</div>
+<script id="audit-data" type="application/json">%%DATA%%</script>
+<script>
+%%JS%%
+</script>
+</body></html>

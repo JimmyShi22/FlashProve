@@ -1,0 +1,4 @@
+Declarations of the library's other folders that the texts above name, where the program can tell which is meant; they stand by file, each file's head folded above them.
+Unlike above, a declaration of more than 60 lines or 6,000 characters is given by its docstring, file and line alone.
+Whose work a file follows, and what "that work", "the paper" or a numbered definition means in its comments: see its head; all credits: [CREDITS.md](CREDITS.md).
+Some names and comments carry the numbers of another table; the statements carry the right ones ([LIMITS.md](LIMITS.md), L23).

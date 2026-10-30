@@ -1,0 +1,6 @@
+A program made this page from the Lean files beside it; nothing was retyped. In the comments of the Lean files that the list unnumbered.txt among this page's data names, a number behind "section", "definition" or "proposition" is shown as "…" ("Definition …"); the file has the number. The terms: [TERMS.md](TERMS.md).
+At the left stands the comment above a declaration (its docstring), where it has one; at the right its Lean code; on a narrow screen one stands above the other.
+Lean checks statements and proofs, not comments, and not this page: where a comment differs from the statement next to it, trust the statement; source code can mislead as well, because the library defines notations and macros ([LIMITS.md](LIMITS.md), L23).
+Lean's kernel checks the proofs ([LIMITS.md](LIMITS.md), L43); the kernel itself is trusted, not proved (L45).
+Every theorem here is about definitions written in Lean; none of them is about the programs.
+A statement alone is easy to overrate: start with [README.md](README.md), which tells what is claimed, the limits that weigh most and where the state of the checks is reported; all limits are in [LIMITS.md](LIMITS.md).

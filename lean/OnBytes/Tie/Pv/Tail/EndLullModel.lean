@@ -1,0 +1,300 @@
+-- Copyright 2026 Anthropic PBC
+-- SPDX-License-Identifier: Apache-2.0
+/-
+OnBytes/Tie/Pv/Tail/EndLullModel.lean: which routines of the verifier close no round: 249 of the
+394 routines of OnBytes/Iop/, OnBytes/Model/ and OnBytes/Proof/ that
+OnBytes/Tie/Pv/Keeps/KeepsModel.lean walks.
+
+Statements and proofs, made by the commands of OnBytes/Tie/Pv/Keeps/KeepsWalk.lean, one line for
+each routine, in the order of the definitions. Inside this namespace KeepsM x reads: wherever x
+succeeds, the plan's entries that are still to come are as they were
+(OnBytes/Tie/Pv/Tail/EndLullKit.lean). The list is that of StillModel.lean,
+(the routines that begin and close no round), with eleven routines
+more that take items off a round and close none. Of the other routines nothing is said here, neither
+that they have the property nor that they lack it.
+
+Main names: `takes_lull_blk`, `takes_lull_sub`, `takes_lull_link`: such a routine uses up no
+entry (`Takes x []`, OnBytes/Tie/Pv/Tail/EndTakes.lean).
+
+Limits: those of OnBytes/Tie/Pv/Tail/EndLullKit.lean.
+
+
+-/
+import OnBytes.Tie.Pv.Keeps.KeepsModel
+import OnBytes.Tie.Pv.Tail.EndLullKit
+import OnBytes.Tie.Pv.Tail.EndTakes
+
+set_option autoImplicit false
+set_option relaxedAutoImplicit false
+
+namespace OnBytes.Tie.Pv.Tail.Lull
+
+open OnBytes OnBytes.Model OnBytes.L5
+
+keeps_had OnBytes.Blk.testOnView
+keeps_had OnBytes.Blk.statement
+keeps_had OnBytes.Blk.must
+keeps_walk OnBytes.Blk.requireSampled
+keeps_had OnBytes.Blk.fail
+keeps_had OnBytes.Blk.requireRows
+keeps_had OnBytes.Blk.onView
+keeps_had OnBytes.Blk.get
+keeps_walk OnBytes.Blk.group
+keeps_walk OnBytes.Blk.layout
+keeps_had OnBytes.Blk.onOracle
+keeps_walk OnBytes.Blk.closeLedger
+keeps_had OnBytes.Blk.onGroup
+keeps_walk OnBytes.Blk.beginRun
+keeps_had OnBytes.Blk.getOnView
+keeps_walk OnBytes.Blk.oracle
+keeps_walk OnBytes.Blk.takeMask
+keeps_walk_rec OnBytes.Blk.takeMasksInto
+keeps_walk OnBytes.Blk.takeMasks
+keeps_walk OnBytes.takeSlots
+keeps_had OnBytes.Blk.item
+keeps_walk OnBytes.Blk.recvE
+keeps_walk_rec OnBytes.Blk.recvEsInto
+keeps_walk OnBytes.Blk.recvEs
+keeps_had OnBytes.Blk.theBook
+keeps_had OnBytes.Blk.firstTree
+keeps_had OnBytes.Blk.recvRoot
+keeps_had OnBytes.Blk.setStatement
+keeps_had OnBytes.Blk.setBook
+keeps_walk OnBytes.Blk.receiveOracles
+keeps_had OnBytes.Blk.test
+keeps_walk OnBytes.Blk.recvAnswer
+keeps_walk OnBytes.Send.admit
+keeps_had OnBytes.Blk.lastEntry
+keeps_walk OnBytes.Blk.countOpening
+keeps_had OnBytes.Blk.takeColumns
+keeps_walk_rec OnBytes.Blk.openTreesInto
+keeps_walk OnBytes.Blk.openTrees
+keeps_walk OnBytes.Blk.readOpened
+keeps_walk OnBytes.singleRowsRead
+keeps_had OnBytes.Blk.noteBy
+keeps_walk OnBytes.Blk.join
+keeps_had OnBytes.Blk.isDry
+keeps_walk OnBytes.Blk.addRow
+keeps_walk OnBytes.Blk.addRowsOnView
+keeps_walk OnBytes.switchAdmit
+keeps_walk OnBytes.Blk.spendAsMask
+keeps_had OnBytes.Blk.readStored
+keeps_had OnBytes.Blk.note
+keeps_walk OnBytes.foldeqColumnsVerify
+keeps_walk OnBytes.foldeqJoined
+keeps_walk OnBytes.foldeqRequire
+keeps_walk OnBytes.Blk.adoptOracles
+keeps_had OnBytes.Blk.check
+keeps_had OnBytes.Blk.checkOnView
+keeps_had OnBytes.Blk.handOver
+keeps_had OnBytes.Blk.inPlace
+keeps_had OnBytes.Blk.named
+keeps_walk OnBytes.Blk.newGroup
+keeps_walk OnBytes.Blk.requireAllTested
+keeps_walk OnBytes.Blk.sampledElsewhere
+keeps_had OnBytes.Blk.samples
+keeps_walk OnBytes.linAdopt
+keeps_walk OnBytes.linFirstRows
+keeps_walk OnBytes.groupTarget
+keeps_walk OnBytes.Lkp.fresh
+keeps_walk OnBytes.Lkp.leave
+keeps_walk_rec OnBytes.Lkp.mustBeSampled
+keeps_walk_rec OnBytes.Lkp.noteKeys
+keeps_walk OnBytes.Lkp.onValue
+keeps_walk OnBytes.ReqFrame.beginLink
+keeps_walk OnBytes.ReqFrame.joinOwn
+keeps_walk OnBytes.ReqFrame.start
+keeps_walk OnBytes.ReqRows.make
+keeps_walk OnBytes.ReqRows.row
+keeps_walk_rec OnBytes.Wf.pendingOf
+keeps_walk OnBytes.Wf.startCheck
+keeps_walk OnBytes.Model.LinkM.sub
+keeps_had OnBytes.Model.SubM.ask
+keeps_walk OnBytes.Model.refuse
+keeps_walk OnBytes.Model.mustAs
+keeps_walk OnBytes.Model.LinkM.mustAs
+keeps_had OnBytes.Model.SubM.change
+keeps_walk OnBytes.Model.oneOf
+keeps_walk OnBytes.Model.SubM.batchBy
+keeps_walk OnBytes.Model.SubM.must
+keeps_walk OnBytes.Model.testAs
+keeps_walk OnBytes.Model.HTailF2.selfTestF
+keeps_walk OnBytes.Model.HTailF2.selfTest
+keeps_walk OnBytes.Model.SubM.get
+keeps_walk OnBytes.Model.HTailF2.coefficientsF
+keeps_walk OnBytes.Model.HTailF2.coefficients
+keeps_walk OnBytes.Model.HTailF2.tileSelfTestF
+keeps_walk OnBytes.Model.HTailF2.rkSelfTest
+keeps_walk OnBytes.Model.LinkM.fork
+keeps_walk OnBytes.Model.SubM.allTaken
+keeps_walk OnBytes.Model.LinkM.testAs
+keeps_walk OnBytes.Model.LinkM.must
+keeps_walk OnBytes.Model.rowWeights
+keeps_walk OnBytes.Model.doorTerms
+keeps_walk OnBytes.Model.SubM.settle
+keeps_walk OnBytes.Model.trBatchRows
+keeps_walk OnBytes.Model.SubM.batchRows
+keeps_walk_fn OnBytes.Model.LinkM.call
+keeps_walk OnBytes.Model.SubM.claims
+keeps_walk OnBytes.Model.SubM.lin
+keeps_walk OnBytes.Model.SubM.paid
+keeps_walk OnBytes.Model.Forest.objects
+keeps_walk OnBytes.Model.Forest.paddingLaid
+keeps_had OnBytes.Model.SubM.take
+keeps_walk OnBytes.Model.SubM.kap
+keeps_walk OnBytes.Model.SubM.push
+keeps_walk OnBytes.Model.t2Lin
+keeps_walk OnBytes.Model.Forest.joinAdded
+keeps_walk OnBytes.Model.HTailF2.linJoin9
+keeps_walk OnBytes.Model.pscRow
+keeps_walk OnBytes.Model.Forest.planesAdded
+keeps_walk OnBytes.Model.HTailF2.linBits9
+keeps_walk OnBytes.Model.HTailF2.weightsF
+keeps_walk OnBytes.Model.HTailF2.linTie
+keeps_walk OnBytes.Model.HTailF2.linRead
+keeps_walk OnBytes.Model.HTailF2.objectsF
+keeps_walk OnBytes.Attention.Seam.objects
+keeps_walk OnBytes.Attention.Seam.start
+keeps_walk OnBytes.Model.SubM.slot
+keeps_walk OnBytes.Model.HTailF2.fixedBeforeTheMatrixF
+keeps_walk OnBytes.Model.SubM.rootTaken
+keeps_walk OnBytes.Model.SubM.owe
+keeps_walk OnBytes.Model.noBatching
+keeps_walk OnBytes.Model.SubM.publicPart
+keeps_walk OnBytes.Model.SubM.takeSlots
+keeps_walk OnBytes.Model.trSum
+keeps_walk OnBytes.Model.SubM.readSum
+keeps_walk_rec OnBytes.Model.trReadLoop
+keeps_walk OnBytes.Model.trRead
+keeps_walk OnBytes.Model.SubM.read
+keeps_walk OnBytes.Model.SubM.shown
+keeps_walk OnBytes.Attention.allJoined
+keeps_walk OnBytes.Attention.lessPieces
+keeps_walk OnBytes.Attention.weighted
+keeps_walk OnBytes.Model.uEnt
+keeps_walk OnBytes.Attention.u3at
+keeps_walk OnBytes.Attention.plane
+keeps_walk OnBytes.Attention.linPlanes
+keeps_walk OnBytes.Attention.callKR
+keeps_walk OnBytes.Attention.claim3
+keeps_walk OnBytes.Attention.overG
+keeps_walk OnBytes.Attention.shV
+keeps_walk OnBytes.Attention.readMaximum
+keeps_walk OnBytes.Attention.xl
+keeps_walk OnBytes.Attention.readHead
+keeps_walk OnBytes.Attention.readGroup
+keeps_walk OnBytes.Attention.endValues
+keeps_walk OnBytes.Attention.unitKFD
+keeps_walk OnBytes.Attention.callKFD
+keeps_walk OnBytes.Attention.claim4
+keeps_walk OnBytes.Attention.readDenominator
+keeps_walk OnBytes.Attention.readIndexBit
+keeps_walk OnBytes.Attention.endValuesE
+keeps_walk OnBytes.Attention.claim5
+keeps_walk OnBytes.Attention.paddingLaid
+keeps_walk OnBytes.Model.Forest.join
+keeps_walk OnBytes.Attention.valueProduct
+keeps_walk OnBytes.Attention.claim6
+keeps_walk OnBytes.Attention.claim7
+keeps_walk OnBytes.Attention.claim8
+keeps_walk OnBytes.Model.Forest.planesAt
+keeps_walk OnBytes.Model.Forest.planeClaims
+keeps_walk OnBytes.Model.Forest.planeLins
+keeps_walk OnBytes.Attention.claims
+keeps_walk OnBytes.Attention.countsHeld
+keeps_walk OnBytes.Model.SubM.claimsIn
+keeps_walk_rec OnBytes.Attention.sc3Shown
+keeps_walk OnBytes.Attention.sc3Row
+keeps_walk OnBytes.Attention.keyTerm
+keeps_walk OnBytes.Attention.scdRow
+keeps_walk OnBytes.Attention.noFreeSlot
+keeps_walk OnBytes.Attention.PlaceM.weights
+keeps_walk_fn OnBytes.Attention.PlaceM.placed
+keeps_walk_fn OnBytes.Attention.add
+keeps_walk_fn OnBytes.Attention.PlaceM.total
+keeps_walk OnBytes.Attention.addAs
+keeps_walk OnBytes.Attention.addRow
+keeps_walk OnBytes.Attention.PlaceM.getAs
+keeps_walk OnBytes.Attention.lng
+keeps_walk OnBytes.Attention.addLong
+keeps_walk OnBytes.Attention.placeAll
+keeps_walk OnBytes.Attention.tables
+keeps_walk OnBytes.Model.SubM.setPlanClaims
+keeps_walk OnBytes.Model.Head.getAs
+keeps_walk OnBytes.Model.Head.segOf
+keeps_walk OnBytes.Model.Head.ewOf
+keeps_walk OnBytes.Model.Head.held
+keeps_walk OnBytes.Model.Head.ewh
+keeps_walk OnBytes.Model.Head.tabAt
+keeps_walk OnBytes.Model.Head.U3at
+keeps_walk OnBytes.Model.Head.Sl
+keeps_walk OnBytes.Model.Head.ztSeg
+keeps_walk OnBytes.Model.Head.middleDigit
+keeps_walk OnBytes.Model.Head.lowDigit
+keeps_walk OnBytes.Model.Head.gapAt
+keeps_walk OnBytes.Model.Head.sh2
+keeps_walk OnBytes.Model.Head.LINE
+keeps_walk OnBytes.Model.Head.keyForm
+keeps_walk OnBytes.Model.Head.claimJoin
+keeps_walk OnBytes.Model.Head.row5At
+keeps_walk OnBytes.Model.Head.claimLedger5
+keeps_walk OnBytes.Model.Head.rowAt
+keeps_walk OnBytes.Model.Head.claimLedger4
+keeps_walk OnBytes.Model.Head.claimLedger
+keeps_walk OnBytes.Model.Head.claimLogits
+keeps_walk OnBytes.Model.Head.claimPlanes
+keeps_walk OnBytes.Model.Head.claimPolicy
+keeps_walk OnBytes.Model.layerObject
+keeps_walk OnBytes.Model.Head.claimSquares
+keeps_walk OnBytes.Model.Head.xbA
+keeps_walk OnBytes.Model.Head.claimStream
+keeps_walk OnBytes.Model.Head.noteH
+keeps_walk OnBytes.Model.Head.noteConstant
+keeps_walk OnBytes.Model.Head.replyToken
+keeps_walk OnBytes.Model.SubM.slots
+keeps_walk OnBytes.Model.Head.mergedPoint
+keeps_walk OnBytes.Model.Head.shownRun
+keeps_walk OnBytes.Model.Head.tablesOf
+keeps_walk OnBytes.Model.Head.weightsClaim
+keeps_walk OnBytes.Model.wsForkLin
+keeps_walk OnBytes.Model.Head.walk
+keeps_walk OnBytes.Model.Head.selfTests
+keeps_walk OnBytes.Model.SubM.hide
+keeps_walk OnBytes.Model.SubM.test
+keeps_walk OnBytes.Model.Layer.form
+keeps_walk OnBytes.Model.Layer.claimEmbedding
+keeps_walk OnBytes.Model.Layer.claimRowBatch
+keeps_walk OnBytes.Model.Layer.claimsEnds
+keeps_walk OnBytes.Model.Layer.claimsGated
+keeps_walk OnBytes.Model.Layer.shownRun
+keeps_walk OnBytes.Model.Layer.claimsLedger4
+keeps_walk OnBytes.Model.Layer.claimsLedger5
+keeps_walk OnBytes.Model.Layer.claimsNorms
+keeps_walk OnBytes.Model.Layer.claimsOneHot
+keeps_walk OnBytes.Model.Layer.claimsPlanes
+keeps_walk OnBytes.Model.Layer.claimsTerms
+keeps_walk OnBytes.Model.Layer.freeSlotTest
+keeps_walk OnBytes.Model.Layer.note
+keeps_walk OnBytes.Model.Layer.joinStart
+keeps_walk OnBytes.Model.Layer.noteClaims
+keeps_walk OnBytes.Model.ChainCheck.start
+keeps_walk OnBytes.Model.Stages.indexMasksH
+keeps_walk OnBytes.Model.Stages.pendingRowH
+
+/-- A block that closes no round uses up no entry. -/
+theorem takes_lull_blk {α : Type} {b : Blk α} (k : KeepsM b) : Used.Takes b [] :=
+  fun _ _ _ h => ⟨[], (same_blk k h).entries.symm, rfl⟩
+
+/-- A routine of a sub-proof that closes no round uses up no entry. -/
+theorem takes_lull_sub {α : Type} {x : SubM α} (k : KeepsM x) : Used.Takes x [] :=
+  fun s _ s' h =>
+    ⟨[], (same_sub (F := s.1) (c := s.2) (G := s'.1) (c' := s'.2) k h).entries.symm, rfl⟩
+
+/-- A routine of a link that closes no round uses up no entry. -/
+theorem takes_lull_link {α : Type} {x : LinkM α} (k : KeepsM x) : Used.Takes x [] :=
+  fun s _ s' h => ⟨[], (same_link (L := s.1) (F := s.2.1) (c := s.2.2) (L' := s'.1) (G := s'.2.1)
+    (c' := s'.2.2) k h).entries.symm, rfl⟩
+
+end OnBytes.Tie.Pv.Tail.Lull
+
+#print axioms OnBytes.Tie.Pv.Tail.Lull.takes_lull_link

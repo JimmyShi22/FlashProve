@@ -1,0 +1,1418 @@
+How check.py works, and what it does not catch
+==============================================
+
+This page contains what check.py's help text omits: the build, the Lake files and what their pins do
+not give you, the scratch directory, and how the script was tested. Then it explains the text rules
+of the steps "tree" and "words": which characters a Lean file of this library may contain, how long
+its lines may be, how words are searched, how comments are blanked, one name part that is rejected,
+the three rules on the modules below OnBytes.Main (what this page calls "the program": "The three
+rules on the program"), the rule on the named theorems, the list of "#guard" commands, the front's
+compiled statements, and the number of lines of each kind. Each of these parts says what its rule
+does not catch. Names in capitals (SIGNS, WORDS, MORE, PROGRAMS, ENDS, GUARDS, NO_ROWS and so on)
+are tables in check.py. What each step of the script shows as a whole is in README.md.
+
+The build
+---------
+
+The library must be a Lake project (lakefile.toml, lake-manifest.json, lean-toolchain) whose
+.lake/packages contain Mathlib with its compiled files ("lake exe cache get"). The copy is built
+from scratch by "lake build", replayed by "lake env leanchecker" (the modules of two libraries by
+another call: see below) and audited by "lake env lean". All run with LEAN_ABORT_ON_PANIC=1, after a
+control run: scripts/README.md, "Panics". The script runs no mutation tests and no second,
+independent proof checker: scripts/README.md, "What the script does not run". What has been run, on
+what machine, how long it took and how it ended is told on lean/CHECKING.md. This file tells the
+rules, their reasons and their limits, and of the runs only what is the reason for a rule.
+
+The build names all three libraries of lakefile.toml in one call ("lake build Library AtFullSide
+ShapeLines"). Plain "lake build" builds the default targets, and ShapeLines is none. Its files that
+AtFullSide reaches by imports get built all the same, but not three files that neither default
+target reaches (THIRD_ONLY). Every Lean file must have its compiled file: there is no list of
+excused files. A file that is missing from the copy fails nothing by itself, so the verdict on the
+build also fails if one of these three is not in the copy.
+
+One module is replayed by another call. So is every other module of the two libraries that
+lakefile.toml has Lean compile at a larger thread stack, AtFullSide/ and ShapeLines/. In all, 1,439
+modules of two libraries (AtFullSide/: 915; ShapeLines/: 524) are replayed by Lean's own replay
+under a wider stack, not by leanchecker. What is shown of the need: with 901 modules in AtFullSide/,
+22 of them stopped under leanchecker with "deep recursion detected", and so does
+AtFullSide/Layout/TieRfl.lean (seen on two machines); each of the 23 went through at the wider stack
+(the next paragraph). For the other modules of these two libraries no such need is shown; the rule
+sends them to Lean's own replay all the same. leanchecker replays none of these. It replays every
+other module of the library, but for a module of import lines alone that shares its name with a
+directory ("The kernel replay's names").
+
+Why there is another call. leanchecker, called without --fresh as here, runs each module's replay as
+a task, on a thread of Lean's runtime, and it has no option for that thread's stack. A larger stack
+limit in the shell changed nothing (tried at 256 MiB and at 1 GiB). In AtFullSide/Layout/TieRfl.lean
+the kernel compares two lists of 224,975 characters (the constant Johnson.Unfolds.Layout.lay_chars),
+and at Lean's default stack it stops there with "(kernel) deep recursion detected": when the file is
+compiled, and when leanchecker replays it (exit status 1; seen on two machines). That is the one
+module, the name in the table WIDE_REPLAY. It is not alone. With 901 modules in AtFullSide/,
+leanchecker was given all of them but that one. 22 more stopped in the same way: six in one whole
+run of the script, which ended "Check failed: replay, audit" (on the audit: "The audit has two more
+limits", below); each of the six ended its job, so that the 323 modules behind them in their jobs
+were not replayed; and sixteen when each of these 323 was then given to leanchecker alone. The other
+878 passed. In that run the main library had 28,480 modules: none of them stopped so. All 23 passed
+by the other call at 128 MiB, with the four lines in a file. Of ShapeLines/ nobody has tried which
+modules would pass at leanchecker's stack; one of them needs more than 128 MiB even to compile. To
+compile them, lakefile.toml gives Lean --tstack=131072 (128 MiB a thread) for the directory
+AtFullSide/ and --tstack=262144 (256 MiB a thread) for the directory ShapeLines/.
+
+The rule goes by library, not by a list of modules. Every module of a library that lakefile.toml
+compiles at a larger thread stack is replayed by the other call, one process a module, at that very
+stack. A stack failure in the main library stays a failure. The rule does not go by a list of the
+modules that failed: such a list is true of one state of the files, a new failure shows only at the
+end of a whole run, and a run names only the first failure of each job. Nor does check.py try
+leanchecker first and the other call after a stack failure: leanchecker gives one exit status for a
+list of names, and a list of one name costs a walk of the whole search path ("The kernel replay's
+names", below). What is given up: for the modules that would pass at leanchecker's stack (878 of 901
+in the runs above) the second check could be made by the program leanchecker and is not, and all
+that the next paragraphs tell of the other call holds for them too.
+
+Which libraries these are, and their stacks, check.py reads from lakefile.toml itself
+(wide_libraries), from the copy whose sha256 it compares with LAKE_FILES. It does not read TOML. It
+takes the lines as they are and knows one form, the delivered file's: below a line [[lean_lib]], and
+before the next line that opens a table, the three whole lines name = "Name", globs = ["Name.+"] and
+moreLeanArgs = ["--tstack=N"], each once. A line whose first sign is "#" is a remark and is passed
+over. If the letters tstack stand in any other line, in any other form, under any other key or in
+any other kind of table, check.py stops before its first step, says "Nothing was checked" and ends
+with status 2: it could not tell which modules are compiled at which stack. It also stops if the
+letters LeanArgs stand in any line but these (a second option could lower the stack again), at a
+backslash in any line that is no remark (a key in quotation marks could spell these letters with an
+escape), and at three quotation marks in a row anywhere in the file (a string of several lines could
+hold lines that look like a table). A run with the step "build" that stops in one of these ways
+leaves its scratch directory behind, with the copy in it; a run of the text steps alone removes it.
+With --other-lake the file that is read need not be the delivered one; the pin of the next paragraph
+holds all the same, and the last line says that the Lake files are not the expected ones ("Lake
+files").
+
+Which modules leave leanchecker is pinned. For each of these libraries WIDE_SUMS holds the sha256 of
+the list of its modules in order, each on a line with its stack ("Name --tstack=N"). The step
+"tree", which reads text only, works the list out from the library's files, compares it and prints
+the counts ("AtFullSide/: N, ShapeLines/: M; they are the pinned ones (WIDE_SUMS)"). The replay's
+verdict works it out again, from the modules that the build compiled, and fails unless the sums are
+the stored ones. The libraries must be those of WIDE_SUMS, no more and no fewer. So a further
+library, a module moved from the main library into one of these directories, one module swapped for
+another, or another stack fails the check until the stored value is changed, and such a change is to
+be read like any change of a pin. A sum shows that a list has changed, not that it is right. The run
+writes all the names, each with its stack, into the file replay-other-call.txt beside the logs, and
+its last lines give the count and the rule. The replay's verdict gives the split: how many modules
+leanchecker replayed, and for each of the two directories how many went by the other call and at
+which stack.
+
+The call. For each such module check.py hands Lean four lines on its standard input ("lake env lean
+--tstack=N --stdin", with the library's N) and writes no file of them. The lines import LeanChecker,
+the toolchain's own compiled module, call replayFromImports on the module's name, and then print a
+closing line with a random word of this run. A module counts as replayed only if the exit status is
+0 and the closing line is there exactly once. These calls come first, so that a failure among them
+shows before leanchecker's long run and not behind it. They run side by side, up to the number that
+is told under "What the other call needs" below, and end before leanchecker's jobs start. How far
+this call has been tried with Lean is told on lean/CHECKING.md. Two things that were seen bear on
+the rule above: on a module that does not exist the call ended with status 1 and without the closing
+line; and with the four lines in a file, at the default stack, the call on TieRfl ended with status
+1 and without that line.
+
+What is the same in the two calls: replayFromImports is the function that leanchecker calls for each
+module. It imports the module's imports as they lie compiled and sends the module's own constants
+through the kernel again (read in the toolchain's source, src/lean/LeanChecker.lean). What is not
+the same: Lean's #eval runs the function, where in leanchecker it is part of a compiled program; it
+runs inside "lean", where --tstack sets the stack (with the option it passed, without it it failed);
+the name means that one module, where leanchecker takes a name as a prefix; the search path is the
+one that "lean" sets up from LEAN_PATH; the report is check.py's own closing line, where leanchecker
+prints "replaying" and the name; and "import LeanChecker" loads Lean's and Lake's own modules into
+the process that runs the four lines (the environment that is replayed into is made anew from the
+module's imports, as in leanchecker). One more difference shows when the compiled files are symbolic
+links: leanchecker, whose main program asks for all files on the search path that end in .olean,
+found none of them ("Could not find any oleans"); the other call, whose function asks for the
+module's file by its name, read the link (both askings were read in that source; why the first
+passes a link by was not looked at). With real copies of the same files leanchecker found them all.
+check.py's own build makes real files. Not looked at: whether #eval runs the function in Lean's
+interpreter or as linked code; whether the two programs hold the same kernel (both come from one
+toolchain); whether "lean" runs initialisers of the modules that it imports where leanchecker does
+not (the step "words" and the audit reject initialisers in this library). Not tried: whether either
+call refuses a compiled file that has been tampered with; whether 128 MiB suffice for TieRfl on
+another system than Linux.
+
+The table WIDE_REPLAY holds one name, and check.py stops if it holds none or more than one. It does
+not say which modules go by the other call, only that this one must be there. The replay's verdict
+fails if that name is no module of the library, if a call fails, if the modules that go by the other
+call are not the pinned ones, or if a module of the library went through neither call (a module of
+import lines alone that shares its name with a directory apart). It also fails, before a module's
+call, in two cases. A module that is handed to leanchecker and whose name is a prefix of that
+module's name (a file AtFullSide.lean or ShapeLines.lean with more than import lines) would make
+leanchecker take the module too, since leanchecker takes a name as a prefix. A module LeanChecker of
+the library's own would be found before the toolchain's, since "import" goes by the name on the
+search path; a package with a module of that name is not looked for. check.py looks at the names of
+the library's source files only.
+
+A road that is open. On the search path the packages' and the library's directories of compiled
+files come before the toolchain's (seen in what "lake env printenv LEAN_PATH" printed). So a
+compiled file LeanChecker.olean that code running during the build laid into one of them would be
+what the other call imports, and it would be taken unseen. This road concerns every one of the 1,439
+modules that go by the other call: for none of them does the standalone program leanchecker make the
+second check. That the four lines go over standard input does not close it. It closes another road:
+no file of the four lines lies where a process that such code left running could rewrite it between
+its writing and its reading. The like road for the audit's own file is open: check.py writes
+Audit.lean into its scratch directory and names it to Lean. These are roads of the kind that
+scripts/README.md tells under "Against whom": code that runs while the library compiles can alter
+the script's files and output. Whether leanchecker, which is one program file of the toolchain, is
+open to a LeanChecker.olean so laid was not looked at.
+
+How the rule by library was tried. Against a stand-in for Lake, on a toy library whose lakefile.toml
+has the two tables. Among the cases: every module of AtFullSide/ goes by the other call at 128 MiB,
+also one below another, and leanchecker is handed none of them; a library without the option stays
+with leanchecker, and its deep module fails there; a module of the main library that needs more
+stack still fails the replay, and so does a module of AtFullSide/ that needs more than 128 MiB; at
+each form of lakefile.toml that was tried and that check.py does not read, it does not start; a
+module more, one in and one out, a third library, another stack, a library fewer: each fails in the
+step "tree" and in the replay until the stored value is changed; the four lines go over standard
+input; the module at which a job of leanchecker stops is listed as not replayed. Copies of the
+script that were loosened on purpose were each caught by a case. The stand-in models no memory, so
+the limits on memory below are not tested by it.
+
+The kernel replay's names. leanchecker takes each name that it is given as a prefix: it replays
+every compiled module on the search path whose name is that name, or begins with it and a dot. To
+find these modules it walks, for each name anew, every directory of the search path and resolves the
+real path of every file there that ends in .olean, the packages' and the toolchain's too (read in
+the toolchain's source: src/lean/LeanChecker.lean, main; src/lean/Lean/Util/Path.lean,
+searchModuleNameOfFileName). That walk is what takes the time: one call with ten names, with 32,674
+modules of ours on the search path, had mapped no compiled file and replayed nothing for 640 of its
+659 seconds, nearly all of it time in the operating system, and the ten replays then took some 20
+seconds. More calls side by side did not help.
+
+So check.py hands over few names. A directory's name stands for all modules below it, if these are
+at most REPLAY_CALL and none of them must stay out of this call (a module that goes by the other
+call; a module of import lines alone that shares its name with a directory). Otherwise check.py goes
+one level down. A module that shares its name with a directory and has more than import lines is
+named itself, and brings the modules under its name, however many. A name brings whatever compiled
+module lies below it, also one that has no source file in the library. The verdict does not go by
+the names that were handed over. It reads from leanchecker's own output which modules were replayed.
+leanchecker prints "replaying" and a module's name before it replays the module, so in a job that
+did not end with status 0 the last module named does not count: the last name that is a module of
+the library, not the last word found, since the message of failure can stand behind a further
+"replaying". The verdict fails unless the modules so counted are the compiled modules of the
+library, name for name, without the ones that must stay out; it prints how many names are missing
+and how many were not expected, and the first twelve of each. It does not see whether a module was
+replayed twice. How it was tested: a script in leanchecker's place that answers by the same rule on
+prefixes, and then ends with status 1, leaves out a module's line, ignores a name, prints a line for
+a module that is not in the library, or finds a compiled file without a source: the verdict failed
+in each case, and passed when the script answered rightly. No compiled file was altered for these
+tests.
+
+Packages: they must be real directories, not symbolic links. check.py copies them (6.5 GiB) into its
+scratch directory, and Lake works on the copy. Before copying it checks that every package of the
+manifest is present, that every Mathlib source file has a compiled file, that no link below
+.lake/packages points to nothing or outside its package, and that the disk has room for the copy and
+a tenth more; otherwise Lake is not called. What the build itself writes comes on top, and check.py
+does not bound it. Where the scratch directory lies matters for the time: in a container, with the
+scratch directory on the container's
+overlay file system (/tmp and the home directory lay there), the replay ran more than ten times as
+slowly as with the scratch directory on a disk with a file system of its own; the processes spent
+their time in the kernel (seen on one machine). If the replay crawls, name a directory on a real
+disk with CHECK_SCRATCH_DIR.
+
+Memory: before the build, and again before the replay, check.py asks for 21 GiB of available memory
+(BUILD_GIB, REPLAY_GIB): a floor, far below what single processes have held (below). At the start of
+the step "build", check.py also asks for the memory that the audit will need (below), so that nobody
+waits through the build and the replay only to learn that the audit cannot run. A run with the build
+therefore needs 21 GiB free when that step starts, whatever --jobs says. These 21 GiB do not guard
+against the heavy files of ShapeLines/: for them there is the bound on parallel work, below. Before
+the audit check.py asks for 21 GiB (AUDIT_GIB): modules that declare the same name cannot be loaded
+together, so the audit sorts the modules into groups; and since Lean does not release a group once
+it is loaded, the audit checks most of the later groups in separate processes ("parts"), up to 4 in
+parallel. check.py counts 5 GiB for each of 4 parts and 1 more, whether or not this library needs
+parts (in an audit that was made it needed none: that audit was one process, which held more than
+the 21 GiB counted here). With --jobs N and N below 4 there are at most N parts in parallel, and
+check.py asks for less (at least 7 GiB). If less memory is available than a step needs, that step
+and the later ones are not run and count as failed. Where the available memory cannot be read (not
+Linux), check.py says so and goes on.
+
+Memory, disk and time: CHECKING.md, "What you can do, and on what machine", tells what a run needs
+and what the runs that were made took. The asks above are floors, not needs. Without --jobs check.py
+starts 48 jobs where 115 GiB are free (21, and 2 for each further job); on a smaller library 48 jobs
+held more than 140 GiB. --jobs is the number of leanchecker's jobs (it also caps the audit's parts
+and, unless --wide-jobs is given, the other call's processes); how many modules go by the other call
+at a time has an argument of its own, --wide-jobs ("What the other call needs", below). The 21 GiB
+are no measure of what this library needs.
+
+The bound on parallel work. To compile a module of ShapeLines/ takes a heavy Lean process. Lake,
+left alone, starts about one process for each core, which can run a machine with many cores out of
+memory (reckoned, not run). So check.py always hands "lake build" a bound, as LEAN_NUM_THREADS. If
+the caller has set LEAN_NUM_THREADS to a whole number above 0, that number is taken as it stands,
+even if the memory looks too small for it. Otherwise the bound is one process, and one more for each
+12 GiB (HEAVY_MORE_GIB) of available memory beyond 50 (HEAVIEST_GIB), at most one for each core;
+where the available memory cannot be read, it is one. The run prints the number and where it comes
+from. --jobs does not change it. The two numbers are a rule of thumb. 50 is 49.1 GiB rounded up: the
+greatest resident memory of one process in one build of ShapeLines/ at LEAN_NUM_THREADS=16, by
+samples taken every five seconds (ShapeLines/README.md, "How to build, and what it costs", the
+table). 12 is the room for each further process, from one call "lake build
+ShapeLines.FirstChainRuns" at LEAN_NUM_THREADS=20, of 310 modules in 24 minutes on a machine with 96
+cores, which that page does not tell: at two looks during the call the machine had 234 and 255 GiB
+in use, and 30 before the build of which it was a part began (225 / 20 is about 11, rounded up).
+That page tells the same call at LEAN_NUM_THREADS=48: the most that its processes held together is
+close to the 614 GiB that the rule counts for 48 processes (50 + 47 x 12). So the rule leaves little
+room, or none. Where between 21 and 50 GiB are available the build is started, with the bound one
+unless the caller has set LEAN_NUM_THREADS, and can run out of memory at the heaviest file
+(reckoned, not run). The bound is a setting that check.py hands to Lake; check.py does not test that
+Lake keeps to it. Within the bound, how many of the heaviest files are compiled at the same moment
+is chance. How little memory is enough is not known.
+
+What the other call needs. How many modules go by the other call at a time is --wide-jobs N, if that
+is given: it is taken as it stands. Otherwise it is the lowest of three numbers: the bound above;
+the number of the replay's jobs (--jobs, or the number that check.py works out); and one, and one
+more for each 40 GiB (WIDE_MORE_GIB) of available memory beyond 50 (WIDE_FIRST_GIB). The third holds
+also where the caller has set LEAN_NUM_THREADS, which is meant for the build; where the available
+memory cannot be read, it falls away. The run prints the number and where it comes from. Each of
+these processes runs with one thread. What was seen of their need, in trials that lean/CHECKING.md
+tells: at 28 at a time one process was seen to hold 39.4 GiB of its own, both where each process ran
+with LEAN_NUM_THREADS=8 and at one thread, which check.py sets; at eight threads 72 at a time, and
+40 at a time, overran a limit of 800 GiB, which 28 at a time did not. The 50 is taken over from the
+build; the 40 GiB are that 39.4 rounded up. They are a rule of thumb, not a measured need: at 800
+GiB available they give 19 at a time. What they count covers as many processes of 39.4 GiB as they
+allow; a process that needs more is not covered. How far the rule itself has been tried is told
+there too. A number given by --wide-jobs can ask for more memory than a machine has, and so can the
+caller's LEAN_NUM_THREADS where the available memory cannot be read.
+
+The audit has two more limits. Each of its processes, the parent and each part, may reserve at most
+96 GiB of address space (AUDIT_CAP). That is a limit on one process, not on memory in use and not on
+the processes' total: Lean maps its files and reserves a stack for each thread. A process that
+exceeds the limit exits, and the audit fails. What was seen over 29,905 modules, 901 of them in
+AtFullSide/. In a whole run of the script the audit step failed under a limit of 48 GiB: its process
+ended with "failed to read file" for a compiled file while it imported, before it gave any verdict.
+The same audit file, run by hand and not by check.py, failed so again under 48 GiB, at another file,
+and went through under 96 GiB ("ALL PASSED"), with a peak of 53.0 GiB of address space, at
+LEAN_NUM_THREADS=24 on a machine with 84 cores. What else has and has not been measured of it is
+told on lean/CHECKING.md. The audit runs with the caller's LEAN_NUM_THREADS; a bound that check.py
+works out itself is not handed to it, and Lean then chooses its own number of threads. With many
+more threads, or a larger library, the limit can be too low: raise it in check.py. The limit has no
+bearing on what is audited. A part ends itself 3600 seconds after its timer starts, and the audit
+then fails. Nothing else has a time limit: not a part that hangs before that (in Lean's start-up or
+in "import Lean"), not the audit's own process, not the build, not the replay. A run that hangs must
+be stopped by hand.
+
+Lake files
+----------
+
+The three Lake files must be the ones delivered with this check.py, which pins their sha256
+(LAKE_FILES). If one is missing, is a symbolic link, is not a regular file or has a different
+sha256, or if there is a lakefile.lean, the step "tree" fails and Lake is not called at all,
+whatever --only lists. "lake exe cache get", which you run yourself, obeys the same files: run
+"--only tree" before it.
+
+--other-lake continues with Lake files that have other contents (they choose which Lean and which
+Mathlib are fetched and run on your machine): the step "tree" prints what differs and does not fail
+for that. It lets nothing else pass: a lakefile.lean is rejected with the option too, and so are a
+Lake file that is missing, is a symbolic link or is not a regular file, and a lean-toolchain that
+cannot be read as UTF-8 text, or whose first line, blanks at its two ends aside, is empty or holds a
+character that cannot be printed. In each of these cases the step "tree" fails and Lake is not
+called at all. The reason for a missing file: check.py builds in a copy, and the copy would lack the
+file. Without a lean-toolchain in the copy, elan, the program that starts Lake, takes a file of that
+name from a directory further up (seen with elan 4.2.4), and by default the copy lies below /tmp,
+where any account can put one: that file would then choose which Lean is fetched and run. elan may
+treat a lean-toolchain that names nothing as absent too (not tried). If one of the three is no
+longer a regular file in the copy before a later call of Lake, the run stops with an error message
+and status 1, and the copy stays.
+
+Whenever the Lake files are not the delivered ones, the last line starts with "The Lake files are
+not the ones that this check.py expects", followed at best by "Passed so far, and not the full
+check" (exit status 3), and --digest prints the first of the two as a second line. One case ends
+sooner: a lakefile.toml that is no UTF-8 text, or from which check.py cannot read the thread stacks,
+stops the run before its first step, with status 2 and without that line ("The build", "Which
+libraries these are").
+
+The pinned values. The sums of the Lake files are one of ten groups of values in check.py that pin
+something. The others are: the sums of three lists (LIST_SUM for scan-exceptions.txt, GUARDS_SUM for
+guards.txt, STATEMENTS_SUM for front-statements.txt); the number of lines of each kind (KINDS); the
+theorems that may say "no" (NO_ROWS); the one module that must be among those replayed by the other
+call (WIDE_REPLAY), and the sums of the lists of all of these (WIDE_SUMS: "The build", "One module
+is replayed by another call"); the sums of the program's files (GUARD_SUMS_TEXT); and the sums of
+twenty-nine files, the goals' files and files pinned with them (GOAL_SUMS_TEXT: Ladder.lean, nine
+files in Ladder/, fifteen in VerifiableInference/, three in Johnson/Face/ and one in
+AtFullSide/Face/, each on a line of its own there, byte for byte, comments too, because the goals'
+limits stand in comments; the step "words" fails if one of them has changed or is gone; the other
+files in these four directories, and what lies beneath the goals in the library, are not pinned by
+it). Each group stands between two marker lines, "# PINS: BEGIN" and "# PINS: END", so that it can
+be found and replaced as a whole, by hand or by a program, when a pinned file has been changed on
+purpose. Right behind each group check.py asks for the value's shape: LAKE_FILES has exactly its
+three names, each with a sum of 64 hex digits; each of the three single sums has 64 hex digits;
+KINDS has its three kinds, each with a count; NO_ROWS is a list of names, written with ASCII
+letters, digits, "_", ".", "'", "!" and "?" alone (a theorem's name with a Greek letter or a
+subscript stops the run: the test errs on the strict side); WIDE_REPLAY is a list of one such name;
+WIDE_SUMS gives each of its names a sum of 64 hex digits; every line of GUARD_SUMS_TEXT and of
+GOAL_SUMS_TEXT is a sum, a blank and the path of a module's file. A value of another shape stops the
+run with a sentence and the exit status 2. That catches a slip in replacing the values. It does not
+show that a value is the right one, or that a table has all its lines.
+
+What the pinned Lake files do not give you
+------------------------------------------
+
+- check.py, lclib.py and Audit.lean.in are stored in the library that they check, and anyone who can
+  change the Lake files can change these three programs too. The pins help only if you take the
+  three programs from a copy that you trust (and point them at the library with --root), or compare
+  their full sha256 with a record that you trust. (The run's end prints only the first 12 characters
+  of each: too few against someone who searches for a collision.)
+
+- lean-toolchain names Lean by a version tag, not by a digest: what elan downloads for that tag is
+  not compared with anything. No step checks which Lean actually ran: "lake" is whatever your PATH
+  finds, and elan settings on your machine can override the file.
+
+- The manifest names Mathlib and the other packages by git revision, but check.py does not compare
+  .lake/packages with it, and what Lake itself compares (URL, revision) can be set by whoever made
+  the directory. Mathlib's compiled files come from a public cache: no step rebuilds them on
+  purpose, and none replays them.
+
+- The delivered library has no .lake directory. If yours came with one, start again from a fresh
+  copy without it and fetch the packages yourself: whoever made that directory chose the Mathlib
+  that is trusted without a check, and programs in it run as soon as Lake is called; nothing here
+  would notice. If "--only tree" prints "not examined: .lake in the top directory" before you fetch
+  anything, yours came with one. (A .lake that you created yourself is fine.)
+
+- Code in the library's own Lean files runs while they are compiled, with your account's rights; it
+  could change anything that you can change, including the copy's Lake files (scripts/README.md,
+  "Against whom").
+
+One copy
+--------
+
+The library and its data files are copied once, at the start, into a new scratch directory that only
+your account can open: in the system's temporary directory or, if CHECK_SCRATCH_DIR is set, in the
+directory that it names. That directory is never removed; if it is missing it is created, but not in
+a place that another account could change (the next paragraph). For the system's temporary directory
+check.py tries, in this order, what TMPDIR, TEMP and TMP name, then /tmp, /var/tmp and /usr/tmp, and
+takes the first that is a directory in which your account may make an entry. It writes nothing to
+find that out. A place inside the library is not taken: the run stops (status 2) and says "Nothing
+was created". check.py sets its umask to 077 for the whole run. Every step checks that copy and
+nothing else, except that eight rules of the step "tree" look at the original while it is copied
+(symbolic links; Lean files that are no regular files; hidden directories with Lean files; Lean
+files in scripts/; names that differ only in case; names that cannot be printed; a lakefile.lean;
+directories that cannot be read). Only the step "tree" tells what these eight find. So a directory
+of the library that your account cannot read makes that step fail ("a directory that cannot be read:
+.."), while --digest, and a run without that step, leave it out of the copy and of the library's
+sha256 without a word. The packages are copied later, by the step "build" ("The build"). Left alone
+by other accounts ("What is left", below), check.py writes nothing into the library itself.
+
+A place that another account could change. That is a place where the scratch directory's parent, or
+a folder above it, is a folder that its group or others can write in without the sticky bit, or one
+that belongs to an account other than yours or root. There a run that includes the step "build"
+refuses at its start: it says why on standard error, runs no step and ends with status 1. The reason
+is Lake and Lean. They start in the scratch directory, but check.py cannot bound what paths they
+build from there, and they compile and run what they find: that account could put another folder in
+the scratch directory's place while the build runs and choose what Lean compiles and runs as you. A
+folder that only you or root can change, such as one in your home folder, or /tmp, with its sticky
+bit, will do (a directory that you name inside /tmp should be there already: "What is left", (1)).
+On a machine where you trust every account (a container of your own, for example),
+--i-trust-every-account-on-this-machine takes such a folder all the same, and the first and last
+lines of the run say so. The text steps and --digest start no program, and once the place is opened,
+what they read and write does not go by the path ("How check.py reaches the scratch directory",
+below). In such a place they print a note on standard error and go on, if the directory that was
+named is there. If the run finds no directory there, it makes none and stops, with status 2: "cannot
+create a scratch directory in .. (this run finds no directory there, and it makes none where another
+account may be able to change ..). Nothing was checked."
+
+The look at the place. The first look comes before anything is written, and goes from the lowest
+part of the path that exists up to the root. Where the first look finds that another account could
+change the place, and the option is not given, check.py makes no directory but its scratch
+directory, as an entry of the place that it has opened. Where the first look finds nothing, a named
+directory that is missing is created, and the look is made a second time, so that a directory which
+another account made in the meantime is seen; the refusal is the same, but the missing directories
+have been made by then. Each look judges the path as you named it, made absolute; for each symbolic
+link on that path, the path that the link names, and in turn the links on that one; and last the
+path with all links resolved. A symbolic link is judged by its owner and by the directories above
+it. After 40 such paths check.py gives up, and the place counts as one that another account could
+change ("this script does not follow so many symbolic links, so it cannot tell"). A group that, by
+the system's lists, has no account in it but yours and root does not count as "its group": many
+systems give each user such a group. When check.py runs as root and SUDO_UID holds a number, as sudo
+sets it, the account with that number counts as yours, also for its group: that account could then
+exchange the copy and choose what Lean runs as root. That is no loss where it may do anything as
+root anyway; if its sudo rights are limited, or if SUDO_UID was left in root's environment by an
+earlier sudo, unset SUDO_UID before the run. A directory that cannot be looked at counts as changed.
+Not looked at: access control lists; members of a group that the system's lists do not show; the
+directory that TMPDIR names, where the scratch directory does not lie in it (Lake and Lean get
+TMPDIR as it is); what lies behind a symbolic link of your own, or of root's, whose text has ".."
+after a name that does not exist.
+
+How check.py reaches the scratch directory. It opens the place once and holds it open (on a system
+that can open a directory without reading it, Linux among them, the place need not be readable). It
+makes the scratch directory (a random name, mode 700), opens it, and at the end removes it, as an
+entry of that open directory, and does not walk the path again. It checks that what it has opened is
+yours, closed to group and others, and empty, and stops if not (status 2). It holds the scratch
+directory open too, and makes it its working directory. Whatever check.py then reads, writes or
+removes there it reaches through the open directory or relative to the working directory, never by
+the path, and from then on it never asks the system where the working directory lies. So if another
+account put something else at the path, or renamed a folder above it, that would change nothing in
+what is read, written or removed. The path is printed in messages and used for nothing else. Each
+file of the copy is created new, in directories that are made and opened one by one without
+following a symbolic link. If anything lies at a file's name, the run stops (status 2): "in the
+scratch directory .. something already lies at ..: another process put it there, or this file system
+takes two names of the library for one. Nothing was checked." So the copy cannot land outside the
+scratch directory and cannot overwrite anything, with or without the option. The files that the step
+"build" writes beside the copy (the logs, the audit's program, the listing) are opened in the same
+way, no link followed, except that a file which lies at the name is emptied. A symbolic link at the
+name of the audit's result file is not taken: it is removed, and the audit fails. The packages are
+copied relative to the working directory, and Lake and Lean are started in the copy, with relative
+names for the files that check.py hands them. In the error lines of the audit that it prints,
+check.py puts the whole path in place of "../"; if the copy of the packages fails, the message names
+the target relative to the scratch directory ('tree/.lake/packages/..'). If you run check.py inside
+a Python process of your own, that process stands in the scratch directory afterwards.
+
+What is left. (1) In a place where other accounts can make entries, such as /tmp, if the directory
+that you name is not there yet, an account that knows its name and acts at that moment can have an
+empty directory of yours made where it chooses. Name a directory that exists, or one below folders
+that only you or root can write in. Neither look need see this, in a run of any kind; the directory
+stays, and a run that goes on makes its scratch directory in it. With no variable set the place is
+the system's temporary directory itself, which exists, and nothing is made but the scratch
+directory. (2) With the option, a named directory that is missing is created also in a place that
+another account can change. Without the option the same holds where only the second look finds such
+a place: by then the directory has been created. In both cases that account can have these empty
+directories made, as you, where it chooses. (3) A run that goes on in such a place (the text steps,
+--digest, any run with the option) opens the place once, by its path: that account can choose, once,
+in which directory that exists the scratch directory is made. The scratch directory holds nothing
+but what this run lays in it. (4) The test of what was opened shows a directory of that kind (yours,
+closed, empty), not that it is the one just made: where another account can rename the entries of
+the place, it could be another empty, closed directory of yours; the run then works in that
+directory and removes it at the end, and the one just made stays, empty. (5) With the option, what
+Lake and Lean do with paths of their own making rests on your word. Told elsewhere in this part:
+SUDO_UID, access control lists and a link of your own with ".." ("The look at the place"); a mount
+of the same file system (the last paragraph).
+
+What of this was tried. On small made-up libraries, with the text steps, with --digest, and with
+whole runs that had a stand-in for Lake, so that nothing was built; as root, as root under sudo, and
+as an ordinary account; in a folder that everybody could write in, in another account's own folder,
+and in /tmp. The scratch directory was moved aside during the run and something else put at its
+name: by a change from inside the run, by a second account while the run was held for some seconds,
+once under sudo with nothing held, and by a second account that raced some sixty runs and was in
+time in each. Nothing of the caller's was overwritten, nothing landed elsewhere, and every file that
+was laid out to be hit kept its checksum and mode; each run passed on the copy that it held, with
+the right sha256 of the library, or stopped with status 2. In /tmp the system refused the move. A
+copy of the script that goes by the path was led astray by the change from inside, in the held runs
+and under sudo (it was not put to the race), so these trials can tell the difference. A second
+account that kept renaming a folder above the scratch directory, through 150 runs: each ended with
+the right sha256 and no file left out, or with status 2. A link inside the held directory at the
+name of one of the copy's files: status 2.
+
+Tried of the refusal, the note and the stop. A whole run and --only build, with the place in or
+below another account's directory, in a directory that everybody could write in, or with another
+account's link on the named path, also behind a link of the caller's own: the refusal, status 1,
+nothing made, no step run. The place opened to all, a link laid, or the directory above moved away
+between the first look and the second, by a change from inside the run: the refusal. The text steps
+and --digest in such a place, the named directory there: the note, status 0, nothing left behind,
+and no call that makes a directory by its path. The named directory missing there, in eleven forms,
+and through 500 runs beside a second account that kept changing the path: status 2, or a run that
+went on in a directory which was there; no directory made but the scratch directory. With the
+option: no refusal and no note, the missing directory made, and the first and last lines say so.
+Point (1) of "What is left", in a sticky folder of root's, beside a second account that did nothing
+else: an empty directory of the caller's, mode 700, was made in a closed folder of the caller's in 6
+of 300 runs of a text step and 2 of 100 whole runs with one directory missing, and in 8 of 300 and 5
+of 150 with two; no file of the caller's was read, overwritten or removed. The advice given there
+rests on reading, not on a trial.
+
+Tried of the rest. A scratch directory that, by a change from inside the run, was another account's,
+not empty, or gone when it was opened: status 2, nothing checked. With --digest every removing call
+went through an open directory. A directory of the library that the caller could not read: "tree"
+said so and failed. Something mounted inside the scratch directory: another file system, also as a
+bind mount, was not entered and kept its mode; a bind mount of the same file system was emptied.
+With the stand-in for Lake: every call started in the copy that the run held, with the relative
+names, and found the files; none of check.py's open directories reached the program that was
+started; with the scratch directory moved aside, all that the step wrote landed in the held one. A
+link at the name of the audit's result file: the audit failed, the link was removed, and the file
+that it named was left alone. Beside a copy of the script that goes by the path, on some sixty
+planted faults, on the whole library with and without planted faults, and in some thirty ways to
+call it, the verdicts, the output and the exit status were the same, but for what is told here.
+
+How far these trials go. Most of them ran on other forms of the script and on much smaller
+libraries. Those that a program plays were played again on one more form of the script, which is not
+this one, with the same outcomes; the races and the trials by hand were not repeated. The races had
+root as the caller. Those of these trials that were whole runs with Lake and Lean were made as an
+ordinary account, in containers where no other account was seen at work; three of them had no option
+at all, in a closed directory of the caller's own that CHECK_SCRATCH_DIR named, on a file system in
+memory, below a sticky directory of root's, and neither the note nor the refusal came. Not among
+these trials: a whole run with Lake and Lean with the scratch directory in its default place (on the
+machines at hand /tmp lay on the overlay file system told under "The build"; one run with a named
+directory on that file system was stopped by hand in the replay, which crawled; so in these trials
+that road, the one that most readers will take, was walked to its end only by the text steps, by
+--digest and by whole runs with the stand-in for Lake); a whole run with Lake and Lean under
+--other-lake; a race against an ordinary account's run; Lake and Lean beside a second account at
+work; the stop for two names that a file system takes for one, and a file system that forgets a
+removed directory (both read only); file systems other than ext4, xfs, tmpfs and overlayfs; access
+control lists; macOS; Python other than 3.12 and 3.13. The counts above are those of one machine and
+of one second account that did nothing else; they do not say how often another account would be in
+time elsewhere.
+
+At the end of a run check.py removes the copy, with the packages and the compiled files. It does not
+enter a directory on which another file system is mounted: that stays, and so does what lies above
+it; a mount of the same file system it cannot tell from a plain directory. --digest, and a run that
+starts no program (tree, words, imports), remove the whole scratch directory. If it was moved away
+from its name in the meantime, it is emptied and stays where it was moved: a run of the text steps
+then says "could not be removed and is still there", and --digest says nothing of it. Every other
+run leaves the logs and the listing in the scratch directory and prints the path. A run with the
+build that is interrupted or crashes leaves everything. A run that starts no program removes its
+scratch directory after Ctrl-C or an error too, but not if it is killed. If check.py is killed, the
+Lake and Lean processes that it started run on until they finish; they build in the scratch
+directory, not in your library. check.py sends no signal to a process that it did not start.
+
+How the script was tested
+-------------------------
+
+The script was tested against deliberately broken libraries. What that shows, and what it does not
+show, is told in one place: scripts/README.md, "How the script was tested, and what passes by
+design". What was tried of Lean's lexer is at the end of "Every word is searched twice".
+
+Characters that a Lean file may contain (SIGNS)
+-----------------------------------------------
+
+A Lean file of this library contains only printable ASCII, spaces, line feeds and the characters
+listed in SIGNS: no carriage return, tab, other control or white-space character, and no invisible
+or text-reordering character. Any other character, in any Lean file of the library (FILES), makes
+the steps "tree" and "words" fail. Each of these characters can make Python, a human reader or the
+small parsers of these scripts (code_of, lclib.imports_of) see a different text than Lean does, and
+a line of scan-exceptions.txt must not contain invisible characters. The list is closed and uses no
+Unicode table, so the result does not depend on the Python version.
+
+To use a new character, add it to SIGNS. (Some listed characters resemble others: Greek and Latin
+letters, minus and dash, three combining marks. A word spelt with one of them is a different word
+for Lean too.)
+
+Invalid UTF-8 is rejected, and so is the text "#lang": after a first line "#lang lean4" Lean's
+command line drops that line before parsing (Lean 4.29.1, Lean/Shell.lean, shellMain; tested), while
+a parser that takes the "#" for the end of the header finds no import.
+
+Long lines
+----------
+
+The step "tree" has a verdict on long lines: no line of a Lean file has more than 100 characters,
+except in the files that scripts/long-lines.txt lists. A row of the list has three fields, separated
+by tabs: the file, how many such lines it may have, and how long the longest may be. A row goes by
+count, not by line number or text, so that a change elsewhere in the file does not break it. The
+verdict fails for a file that has more such lines, or a longer one, than its row allows (a file
+without a row may have none); for a row that cannot be read; for a second row for the same file; and
+for a row whose file is not a file of the library. A row that allows more lines than its file has is
+no failure: the verdict prints how many rows do.
+
+Not caught: a long line that is exchanged for another, no longer than the row allows. The rule is
+about the form of the files and says nothing about what a line contains. The list enters the
+library's sha256 like the other data files, but check.py does not pin the list's own sha256, so a
+changed copy can bring a changed list.
+
+Asking files
+------------
+
+An asking file is a Lean file below Ask/. A reader runs it by the command in its head
+("lake env lean Ask/.." from lean/, after a build). It may import files of the library, read
+files from disk and print. It is not part of the library: no glob of lakefile.toml reaches Ask/, so
+"lake build" does not compile it.
+What check.py does with these files. They are copied with the library and are in the library's
+sha256, after the library's own files. The step "tree" reads them: only the allowed characters; no
+line of more than 100 characters without a row in long-lines.txt; a header that can be read, without
+"module" or "prelude"; imports of the library's files and of the packages only. The step "words"
+searches them for the same words as the library's files, in the same two ways: sorry, axiom,
+native_decide and all the others are rejected there too. Every run that finds such files prints
+"ASKING FILES: n: not built, not replayed, not audited: .." with their paths, and the last lines of
+the run give their number.
+Three rules of their own, in the step "tree", under one verdict, which is printed only if there is
+such a file. (1) No file of the library imports an asking file, and no asking file imports another:
+none is compiled. The step "imports" rejects such an import as well, and the step "build" removes
+the asking files from its copy before it calls Lake, so the import would fail there too. (2) Above
+its first import an asking file has these five labels, in this order: "Reads:", "Command:",
+"Takes:", "Its print means:", "It does not mean:". (3) An asking file declares no theorem or lemma
+whose name, alone or behind a namespace, is a name on top-theorems.txt or claimed-theorems.tsv.
+A file that claimed-theorems.tsv names must be a file of the library: a file below Ask/ is not.
+Not asking files. A file below Ask/ that is named *_wip.lean, or whose path is not a module path
+(Ask/a-b.lean), is left out like any such file: it is not in the sha256, no step reads it, and only
+the line "LEFT OUT" names it. Ask.lean in the top directory, a folder ask/ in small letters and a
+folder Ask/ inside another folder are files of the library, under all its rules.
+Not caught. check.py does not run an asking file, so it does not know whether the file compiles,
+what it prints, or whether the command in its head works. What stands behind the
+five labels is not read. "#guard" commands in an asking file are not counted in guards.txt. Rule (3)
+reads the text: a theorem made by a macro, or declared with another command, is not seen; the audit
+fails all the same if a name on top-theorems.txt is not in the compiled library. A definition or a
+theorem in an asking file has been checked by nobody's kernel unless the reader runs the file, and
+then only by Lean's own, once, on the reader's machine.
+
+Every word is searched twice
+----------------------------
+
+code_of only approximates Lean's lexer, and Lean's syntax is extensible (an imported file can add
+tokens and parsers), so text that code_of takes for a comment or a string may be code for Lean. Each
+pattern of the word list is therefore searched twice, in every Lean file of the library; three
+words, named under "The raw search", are searched once. The patterns of the rule on the program's
+source and of part (d) of the rule on the program's guards are searched twice as well, in the files
+that these rules cover.
+
+The word list. WORDS: sorry, axiom, opaque, unsafe, native_decide, implemented_by, extern. MORE:
+other names for the same things (sorryAx, ofReduceBool, unsafeCast and others); partial,
+register_option, initialize and builtin_initialize, each of which makes an opaque constant;
+eqnInfoExt and markSparseCasesOn, which are explained beside them in check.py; _unsafe_rec ("The
+name part _unsafe_rec"); and #exit, at which Lean stops reading a file without an error, so that
+what stands below it would be in the text and not in the compiled file. Also searched: the option
+native, written "+native" (also with one space, or with the name in guillemets) or "native := true".
+
+The raw search: in the raw text. Nothing is blanked except the two guillemets, which become spaces
+before both searches; comments, strings and names count like code. It relies on one fact: Lean reads
+a keyword, or a component of a name, only as an unbroken run of characters (Lean 4.29.1,
+Lean/Parser/Basic.lean, identFnAux and tokenFnAux). So no lexing trick hides a single word from it.
+This search skips "partial", "axiom" and "sorry": they are English words, which ordinary comments
+use.
+
+The search in code_of's text: for all words. Only this search sees those three words, and a
+multi-token pattern that a comment splits ("native /- c -/ := true"). It can be fooled: "How
+comments are blanked".
+
+The patterns "native := true" and "@[ .. init" ("The program's source, (b) to (f)", (d)) can match
+across lines; the second then consumes the words in between. Such a match is rejected like any
+other, and no exception covers a match that contains a line break.
+
+scripts/scan-exceptions.txt lists the legitimate lines that the raw search hits (a comment or a
+string that mentions a word); in the output such a place is marked "[raw text only]". An entry has
+three fields, separated by tabs: the file, the whole text of the line, the reason. A line that
+occurs twice in a file needs two entries. An entry covers the raw search only, unless its reason
+starts with "CODE: "; then it covers both, for every word on its line (the flag is per file and
+text: two identical entries share it). So a listed comment line that is turned into code, by moving
+the comment delimiters on other lines, is still rejected by the search in code_of's text. An entry
+that covers no match (also one whose line is there but contains no searched word), or has no reason,
+makes the step fail. The list's sha256 is pinned in check.py (LIST_SUM); otherwise a repository
+could bring its own list. A list with another sha256 is not used at all, and the step fails. After
+changing the list, update the pin (sha256sum scripts/scan-exceptions.txt).
+
+Characters around a word. Before it: anything ("0xFopaque" and "1opaque" are a number followed by
+opaque for Lean: Lean/Parser/Basic.lean, hexNumberFn; Lean/Parser/Module.lean, parseCommand). The
+cost: a name such as my_sorry is rejected too. After it: an ASCII letter, a digit, "_", "'", "!" or
+"?" means no match, because Lean then reads one longer name (Lean/Parser/Basic.lean, identFnAux).
+That is sound as long as Lean has no token that consists of the word plus such characters and has
+the word's effect. The longer names that are known to have it (sorryAx, unsafeCast, unsafeIO,
+unsafeBaseIO; in PROGRAMS macro_rules, elab_rules, simproc_decl and others) are listed themselves;
+partial_fixpoint, and the "axioms" of "#print axioms", are longer tokens of Lean's that pass. After
+"+native" and "native := true", and after a word of PROGRAMS that ends in "%": anything
+("compile_def%Foo" is the token followed by a name: Lean/Parser/Basic.lean, isToken and mkIdResult).
+
+Not caught. (1) A name or token that a program or macro assembles: no text rule sees it; the audit
+and the program's guards read the compiled files. (2) "partial", "axiom", "sorry" where code_of is
+wrong: for these three the text search is only a first alarm, and the audit checks the compiled
+declarations (its verdicts "axioms" and "kinds"). Two limits: a run with --only words has only the
+alarm; and a file that "lake build" does not build fails the build; replay and audit then go on
+without it, or, if "lake build" ended with an error, are not run. (3) A multi-token pattern that is
+both split by a comment and placed where code_of is wrong. (4) A listed line turned into code at a
+place where code_of is wrong too. An entry records its file, the line's text and how often it may
+occur; not its position, nor the surrounding lines (a "CODE: " entry covers its own line and not the
+lines after it). (5) Text that programs Lean while a file is compiled: by a command (macro, syntax,
+elab, notation, run_cmd, #eval and others), an attribute, an option or a tactic's configuration.
+Apart from the words of the list (of this class: initialize, builtin_initialize and register_option,
+and the attributes implemented_by, extern and csimp), a file is searched for such text, and rejected
+for it, only if it lies below the program's root or the program's guard file imports it, and then
+not if it is one of the guards' own files, whose sha256 check.py holds instead ("The three rules on
+the program"); for all other files see the next paragraph.
+
+What programs Lean. For the whole library a rule on the words of (5) would hinder ordinary use, and
+no list of them can be complete, not even the one that is kept below the program's root ("What the
+rule on the program's source does not catch"). This is what is known of the class. An attribute can
+make a definition of the library a part of Lean: an elaborator or a macro on existing syntax, a
+parser, code that runs when a file is imported, a pass of the compiler itself (cpass). Of the 305
+attributes that Lean 4.29.1 with Mathlib has registered, more than half are of this kind, going by
+their names and descriptions. An option can do it too: doc.verso ("How comments are blanked");
+sat.solver names a program that a tactic starts. A tactic's configuration is a term that Lean
+compiles and evaluates, and some configurations have fields that are functions which the tactic then
+calls. Known: proc, suspend and discharge in Lean's own configurations; discharger, oracle and
+preprocessors of Mathlib's linarith. Lean evaluates written terms in more places than anyone has
+listed. And "$( .. )" on the right side of a notation would, as we read Lean's text, be taken for a
+program (not tried). Text rules on attributes, on options, on tactics' configurations and on more of
+the places where code_of differs from Lean are not used: each would be one more list in check.py,
+and all of them together still close nothing (tried).
+
+What the audit does about this class, in the compiled files: it counts the declarations and table
+entries that program Lean, without a verdict (its lines "syntax, no verdict"); a run_cmd can change
+how a file is read and leave nothing in the compiled file. Its verdict "kinds" rejects a csimp
+entry, and an entry in Lean's two tables of initialisers ("initialize", "@[init]"): an initialiser
+runs code, or sets a constant, when the compiled module is loaded (by our reading of Lean 4.29.1's
+source, not tried: Lean/Compiler/InitAttr.lean, registerInitAttrUnsafe).
+
+Tested with Lean 4.29.1 ("lean FILE" on about 80 files of a few lines, with harmless words in place
+of the rejected ones and no import from this library): the fact under "The raw search" (a comment, a
+line break, empty guillemets, an invisible character or a non-Latin letter inside a word does not
+join its halves); a number before a word; the six characters after it; a token ending in "%"; where
+comments start and strings end, at the places where code_of was found to differ from Lean, except
+the following. Only read in Lean's source: a notation token that starts like a doc comment, contains
+a space or is "''"; the option doc.verso; the packages' tokens and parsers; that an option name in
+guillemets is resolved by its value. After an unterminated string Lean reports an error and keeps
+reading commands, while code_of treats the rest as a string; such a file does not compile, and the
+raw search covers all of it.
+
+How comments are blanked (code_of)
+----------------------------------
+
+code_of returns the text with comments, the contents of string literals, and character literals
+blanked (line breaks kept). It approximates Lean's lexer and is not Lean's lexer:
+
+- "--" to the end of the line; "/- ... -/" nested, where one character after "/-" is skipped before
+  nesting is counted (so "/-/- -/" is one closed comment);
+
+- "..." with backslash escapes; raw strings r"..." and r#"..."#, which have no escapes; character
+  literals;
+
+- in an interpolated string (a string directly after "!", as in s!"..." m!"..." f!"...") the parts
+  in braces are code and are kept;
+
+- a comment starts only at the start of the text, after a space, a tab or a line break, or directly
+  after another comment. Lean looks for a comment only where it skips white space after a complete
+  token, so "//-1" (a subtype's bar and a minus), "<--1", "x--", and the like after a package's
+  token that ends in "-" or "/", may start no comment for it;
+
+- "/--" and "/-!" start a comment only if white space follows and the first character after it
+  starts no comment (for Lean they are tokens, and after a token it skips white space, line comments
+  included, before it reads the comment's body);
+
+- a name in guillemets is copied as a whole, and nothing inside it is interpreted (for Lean it is
+  one token, also where it contains a space and a comment delimiter).
+
+Any other "--" or "/-" stays in the output, with everything after it, and is treated as code;
+step_words rejects every "--" and "/-" that is left, in every file, and no entry of
+scan-exceptions.txt covers it. This also rejects legitimate code that is written without a space,
+such as "{x : Int //-1 < x}" and "foo-- a comment": add the space.
+
+Two further ways to mislead code_of are rejected outside it. A lone carriage return in a line
+comment: the character is rejected in every file, and files are read byte for byte, without Python's
+translation of line ends. A notation whose token starts with "/--" or "/-!", which would be a token
+for Lean where code_of reads a comment: the raw search rejects a string that starts so, with or
+without spaces before it, unless an entry of scan-exceptions.txt covers the line.
+
+code_of can still be fooled, and where it takes for a comment or a string what Lean reads as code,
+the search in its text is blind. Known:
+
+- a notation token that contains a space before "--" or "/-"; a package's parser that reads raw
+  text; a token that a program adds;
+
+- the option doc.verso, under which Lean reads a doc comment as a document and elaborates its Lean
+  code blocks as commands, so that text which code_of blanks as a comment runs;
+
+- a string after dbg_trace, println! and the like: Lean reads the parts in its braces as code, and
+  code_of, which does not know these words, blanks them unless the string directly follows a "!";
+
+- the places where code_of loses track of where a string ends: a string that contains a brace inside
+  the braces of an interpolated string; the character literal of a quote after a character that it
+  takes for a letter; a string after "]'". From there on a "--" that Lean reads inside a string
+  hides the rest of that line, and a "/-" hides everything up to the next "-/".
+
+Of the single words, only "partial", "axiom" and "sorry" rely entirely on code_of: see "Every word
+is searched twice". The audit and the commands of the program's guards read the compiled files and
+no text.
+
+The name part _unsafe_rec
+-------------------------
+
+By our reading of Lean 4.29.1's source (Lean/Compiler/LCNF/ToDecl.lean, getDeclInfo? and toDecl) the
+code generator compiles a definition f from the constant f._unsafe_rec, if there is one, and does
+not ask who made it. Lean makes such constants itself, in the compiled files, beside every
+definition by recursion; one that is written in a source file would put other code under a
+definition that the theorems are about, and no guard that reads f's term would see it. We have not
+tried it.
+
+So the word list (MORE) rejects these letters in every Lean file, in both searches. The audit looks
+a second time, in each module's compiled file and without reading text (verdict "kinds"). Every
+constant of the library whose last name part is _unsafe_rec must look like Lean's own: it is a
+definition of the kernel's class "partial"; the name without that part is a constant of the same
+module; that constant is a safe definition or a theorem; both have the same type and universe
+parameters. The audit also fails if it finds no such constant at all, so that a mistyped name part
+does not pass for a clean library. The guards' command #guard_twins (OnBytes/Guard/Core.lean) makes
+the same four tests while the guard file is compiled, on every constant of this library in what that
+file imports. The guard file hands the letters to the command in a string literal, which the search
+in code_of's text blanks; the raw search does not, and the lines of the guards' files that contain
+the letters are listed in scan-exceptions.txt. Below the program's root the same letters are also
+rejected with the strings kept: "The program's source, (b) to (f)", (f).
+
+Not caught: a constant that passes these four tests and has a different body. By our reading no
+syntax of Lean's own creates one; a program that calls addDecl could, and so could an attribute or a
+deriving handler of a package (the packages' sources were not read for this).
+
+The three rules on the program
+------------------------------
+
+Three text rules are about verify-on-bytes, the Lean text below OnBytes.Main: a hand translation of
+cp_verify into Lean, from which this repository builds no program. That text defines a function
+main, as the root of a program does. In the titles below, in check.py's messages and on this page,
+"the program" means what that text defines: main and what main calls. A sentence on what the program
+prints, returns or runs is a reading of that text: check.py links no program, and runs none that is
+built from this library. The three rules and the guards hold for that text as it lies here. Its root
+module is OnBytes.Main (OnBytes/Main.lean). "Below the root" means: the root, and every module of
+this library that it imports, directly or through other modules of the library; import lines are
+read as in the step "imports". The three rules are: no command programs Lean below the root ("The
+program's source"); the outcome of a run is decided in one place ("The program's outcome"); the
+guards themselves are in place ("The program's guards"). The guards are commands in
+OnBytes/Guard/Program.lean, which this page calls the guard file; they run while that file is
+compiled, and fail the build if they reject something. Each of the three rules only rejects more: it
+adds a verdict that can fail, and takes nothing from the other rules. The verdicts belong to the
+step "words".
+
+The rule on the program's outcome and parts (a) to (c) of the rule on the program's guards have no
+file of exceptions. The rule on the program's source and part (d) of the rule on the guards do have
+one: an entry of scripts/scan-exceptions.txt covers its line for them too ("Every word is searched
+twice"). For every file that is neither below the program's root nor imported by its guard file
+(part (d)), the word list (WORDS and MORE) is the only rule on words: in such a file, text that
+programs Lean is neither rejected nor searched for, apart from the words of that list (initialize,
+register_option and a few more). The same holds for the guards' own files: part (d) passes them
+over, because check.py holds their sha256.
+
+Why the program has rules of its own. Below the root more is at stake than how a statement reads. A
+theorem is about a definition, a program built from that text runs compiled code, and the guards tie
+the two together by what Lean has on record: rules for the compiler, attributes that substitute
+other code, the kernel's terms, the compiler's output. Text of the library that runs while a file
+below the root is compiled can change Lean's state for that file without leaving a record, so that
+the compiler puts another function where the proved one is called. In some forms of this, every
+guard, every step of check.py and the audit still pass (the forms that are known:
+OnBytes/Guard/README.md, "Commands 1 to 4: Csimp.lean, Cone.lean, Cmd.lean", "Limits"). The
+delivered library has one line below the root that the rule rejects: a notation that is local to its
+file. It is let through by an entry of its own ("The program's source"). Apart from this line, and
+from the entries for comments or strings that mention a rejected word, the rule costs the library
+nothing.
+
+The program's source
+--------------------
+
+In the modules below the root no command programs Lean. The rule catches a slip and the plain forms,
+not a forger: what stays open is listed under "What the rule on the program's source does not
+catch". Comments are blanked and strings are kept; the same pattern is also searched in the raw text
+("Every word is searched twice"). Strings are kept because after dbg_trace, panic!, println! and the
+like Lean reads the parts in a string's braces as code, and code_of, which does not know these
+words, would blank them unless the string directly follows a "!" ("How comments are blanked"); so a
+rejected word is rejected inside a string too. The verdict also fails if the root is not a file of
+the library, and for a module below the root whose header cannot be read. Rejected are the words of
+(a), and what (b) to (f) describe in the next part.
+
+(a) Every word in PROGRAMS. The list is taken from Lean's table of the words that can begin a
+command, read out of Lean 4.29.1 after "import Mathlib" and "import Lean" (225 words), and, for what
+occurs inside a term or a proof, from the places in the sources of Lean and of the pinned packages
+where a written term is evaluated. Rejected are the words by which text of the library is run at
+once, or is put on record to be run later, or changes how later text is read or compiled. Not in the
+list: notation, infix, infixl, infixr, prefix, postfix; which uses of them are rejected is told
+under (e) (below the root one line begins with such a word, and it falls under (e)). Lean turns each
+into a pattern and a quoted right side, a template in which no text of the library runs (but see
+point 3 of "What the rule on the program's source does not catch"); a rejected word on that right
+side is a match like any other. A notation can still make a written name mean another constant; that
+changes the kernel's term too, which the guards read. Also not rejected: commands that pass names or
+statements to code of Lean or of a package (alias, recall, seal and the like).
+
+One local command. Below the root the library has one command that changes how Lean reads later
+text. Run/Blake2b/LoadThm.lean, a file of theorems and one definition, has one line that begins
+"local notation": a short way to write an array of 64 bytes. "local" ends its scope with its file.
+The notation falls under (e). (A macro would fall under (a): the word macro is in PROGRAMS, because
+a macro's right side is text of the library that Lean runs. Below the root the library has none.) So
+the line has to be let through: it has an entry in scripts/scan-exceptions.txt whose reason begins
+"CODE: "; the entry holds that one line to the letter, and no line after it. And the file stands in
+GUARD_SUMS with the sha256 of all its bytes ("The program's guards", (c)), so that no other line of
+it, the rest of the command among them, can change unseen. By our reading of that line the notation
+stands for a plain literal. No program checks that reading, and none looks at where the file uses
+the notation: read the file.
+
+Which modules lie below the root (BELOW). The table BELOW lists the modules of the library outside
+OnBytes/ that may lie below the root: modules of Fmt/ and of Run/Blake2b/. If another module outside
+OnBytes/ comes to lie below the root, the step "words" fails, with a verdict of its own. The table
+is there so that the text on which the program rests cannot grow unseen into the rest of the
+library. A listed module that no longer lies below the root is no failure. Not caught: a new module
+inside OnBytes/; and imports from outside the library (Std, Lean, Mathlib), which the search for the
+modules below the root skips. As delivered, the modules below the root import one module from
+outside the library, Std.Data.HashMap, which comes with Lean.
+
+The program's source, (b) to (f)
+--------------------------------
+
+(b) Every word that starts with register_, declare_ or builtin_ (32 of the words in Lean's table of
+command keywords, declare_syntax_cat among them), or with aesop (aesop?, aesop_cat and others).
+
+(c) "#" followed by two or more name characters, except #print and #guard, which the library uses,
+below the root too. #eval runs text of this library; #exit ends a file early; "#guard_msgs in" can
+swallow an error; #guard evaluates a Bool, which can change nothing. The guards' own commands
+(#guard_cone and the others) are rejected too: they belong in the guard file, which is not below the
+root. "#" followed by one letter is not a command: #s is Mathlib's number of elements, 0#w is a
+literal, #v[ starts one.
+
+(d) The word init inside an attribute's brackets ("@[init ..]", "@[.., init ..]", "attribute [init
+..] .."). The attribute has two forms. "@[init] def a : IO Unit" is run when the compiled module is
+loaded, before main, whether or not anything below main (anything that main depends on) names it: a
+traversal from main need not reach it. "@[init f] def c : T := v" has c set at that time from f, and
+c can be below main: the theorems see v, the program what f gave (by our reading of Lean 4.29.1's
+source, not tried: Lean/Compiler/InitAttr.lean, registerInitAttrUnsafe;
+Lean/Compiler/LCNF/ToDecl.lean, toDecl; Lean/Compiler/IR/EmitC.lean, emitDeclInit). Three checks
+read no text here. Of the guards, the command #guard_entry looks for the attribute on main, and the
+command #guard_tables counts the entries in Lean's two tables of initialisers for every module of
+this library that the guard file imports (OnBytes/Guard/Core.lean). The audit's verdict "kinds"
+rejects such an entry in every module of the library. The bare word init is not rejected: it is an
+ordinary name (foldl's "init :="; two places below the root). The attribute list may contain one
+level of brackets, and strings. Not caught: an init that comes after two nested levels of brackets
+in the list, or after a "]" that stands inside a character literal or inside a name in guillemets,
+which ends the list for the pattern. Not looked for by any text rule: a definition without
+parameters. It is computed when its module is loaded, before main, whether or not anything calls it,
+and leaves no entry in either table; with safe code it can write to standard error, wait or never
+return (OnBytes/Guard/README.md, "Command 9", which is #guard_tables, under "Limits"; read in Lean's
+source, not tried).
+
+(e) A notation, infix, infixl, infixr, prefix or postfix that starts its line (white space and one
+attribute may precede it, and then "local", "private", "protected", "scoped" and "scoped[NS]", in
+any number), and has on that line a quoted token that contains a letter, a digit, "_", a backtick,
+"#" or "[". The pattern does not pair the quotes, so the text between two quoted tokens counts as
+well. There are two reasons. The first holds for a notation that is not local. Lean reads a guard
+file's lines after the modules that the file imports, with their declarations in force (see the end
+of "The program's guards"), and the longest token wins: such a notation could make one token of
+"[``main]" or of a list's name, and point a guard's commands elsewhere while the file keeps its text
+and its sha256 (reasoned from Lean's text; not tried). A local notation ends with its file and
+cannot reach the guard file. The second reason holds for a local one too: it can change how the rest
+of its own file is read, and a notation's right side can hold "$( .. )" (point 3 of "What the rule
+on the program's source does not catch"). Below the root the library has one notation, the local one
+in Run/Blake2b/LoadThm.lean, so the rule costs it one entry ("The program's source", "One local
+command"). Not caught: such a notation that does not start its line, or whose quoted token is on a
+later line; a notation whose tokens contain none of these characters; an instance or a name that has
+the same effect.
+
+(f) The characters _unsafe_rec at the end of a name, inside strings too ("The name part
+_unsafe_rec"). The word list (MORE) rejects them in every file, in both searches. But an entry of
+scan-exceptions.txt without "CODE: " covers the raw search, and the word list's other search blanks
+the strings; so with such an entry a line passes on which code_of takes for a string what Lean reads
+as code (point 4 below). This rule keeps the strings, and such an entry does not cover its search in
+code_of's text. This is not reliable either: once code_of has lost track of where a string ends, a
+real string that contains a space and "/-" starts a comment for it, whether strings are kept or
+blanked.
+
+What the rule on the program's source does not catch
+----------------------------------------------------
+
+What the rule does not catch, as far as is known. Further text rules for points 1 to 4 are not used:
+each would be one more list in check.py, and all of them together still close nothing (tried).
+
+1. An attribute makes a definition of this library a part of Lean without any of the words above: an
+elaborator on existing syntax (the attribute tactic, for one), a parser, code that runs when a file
+is imported (init, which (d) rejects only in its plainly written forms), a pass of the compiler
+itself (cpass). The attributes term_elab, command_elab and macro are rejected, but only because each
+ends in a word of PROGRAMS and anything may stand before a word. Of the 305 attributes that Lean
+4.29.1 with Mathlib has registered, more than half are of this kind, going by their names and
+descriptions. Below the root the library uses four attributes (inline, noinline, specialize,
+irreducible), none of this kind.
+
+2. An option. Under doc.verso Lean reads a doc comment as a document and elaborates its Lean code
+blocks as commands, so text that this step blanks as a comment runs (the raw search sees this rule's
+single words there too). sat.solver names a program that a tactic starts. Below the root the library
+sets one option, autoImplicit.
+
+3. A tactic's configuration is a term that Lean compiles and evaluates, and some configurations have
+fields that are functions which the tactic then calls. Known: proc, suspend and discharge in Lean's
+own configurations, whose three tactics (solve_by_elim, apply_rules, apply_assumption) are in
+PROGRAMS; discharger, oracle and preprocessors of Mathlib's linarith, which is not rejected. Lean
+evaluates written terms in more places than anyone has listed. And "$( .. )" on the right side of a
+notation would, as we read Lean's text, be taken for a program (not tried).
+
+4. code_of is not Lean's lexer: where it takes for a comment what Lean reads as code, this rule's
+search in code_of's text is blind. What code_of does, which ways to mislead it are rejected, and
+which are still open, is told under "How comments are blanked". OnBytes/Main.lean, whose comparison
+by text such a place could get past, is pinned by its sha256 ("The program's guards", (c)). The
+single words of this rule do not depend on code_of: "Every word is searched twice". What reads the
+compiled environment and no text: the guards' commands (OnBytes/Guard/README.md says of each what it
+reads) and the audit.
+
+5. The lists are those of Lean 4.29.1 and the pinned packages, read after "import Mathlib": a
+command of a package's module that Mathlib does not import was looked for only in the text of the
+sources.
+
+6. Modules that are not below the root (the guards and the tests among them) do program Lean, and
+run while the library is compiled; they can write whatever the user's account can write ("What the
+pinned Lake files do not give you"). So this rule does not close the class of text that programs
+Lean. What can close it is a guard on the compiled code itself, one that compares the compiler's
+output below main with the kernel's terms. How far the guards' command #guard_compiled goes in that
+is described in OnBytes/Guard/README.md, "Commands 1 to 4: Csimp.lean, Cone.lean, Cmd.lean".
+
+7. The local command. No rule judges what the notation does, or that no definition is built by it:
+read it. The entry and the sum show only that the file is the one that check.py was written for. The
+entry stands in a list whose sha256 check.py holds (LIST_SUM), and the sum in check.py itself, so
+both help only as far as check.py is trusted (README.md, "Against whom"). A "CODE: " entry covers
+every rejected word on its line, in both searches. A file in GUARD_SUMS is passed over by part (d)
+of the rule on the program's guards, so that part does not search this file at all; this rule still
+does, and every other line of the file must pass it.
+
+The program's outcome
+---------------------
+
+The outcome of a run is decided in one place. A verifier's answer is its last printed line and its
+exit code. Whoever wants to know when the program says yes should have to read a few named
+definitions and no more; and a change that lets another definition print a passing word, make a
+passing ending or return a passing code should fail this step, so that somebody looks at it.
+
+How a run ends. In verify-on-bytes a run ends in a value of the type Ending
+(OnBytes/Shell/Ask.lean). Its constructor "ended" carries the call's result, a value of the type
+CallEnd (OnBytes/Model/Stages.lean). CallEnd has two accepting results: yes, printed as "YES", and
+withinLimits, printed as "WITHIN LIMITS: " and the policy that the caller named, with its numbers.
+Both have the exit code 0. By the theorem status_zero (OnBytes/Shell/AtCall.lean) no other ending
+has the code 0, taken as a value of the type UInt32; what a shell sees of a code is less than that
+value ("An exit code of three digits or more", below). Two more print the word PASSED, have the exit
+code 3, and are no verdict on a request: CallEnd's partPassed ("PART PASSED: " and a stage's name),
+for a call on one file alone, and Ending's testPassed ("TEST FILES PASSED"), for a call on the files
+of a test protocol. The program's last step, mainIO in OnBytes/Shell/Ops.lean, returns the ending's
+code as it is.
+
+How an entry works. The rule's table is ENDS. It is applied to the modules below the root, with
+comments blanked and strings kept. It searches code_of's text alone. There is no raw search here, so
+code_of's limits apply in full ("How comments are blanked"): what code_of takes for a comment is not
+searched. Each entry gives: its name in the printed line; the pattern that is searched; the modules
+that are searched (None: all; otherwise those whose text matches this second pattern); and, per
+file, the only definitions in which a match is allowed. A definition reaches from an unindented line
+"def NAME" (attributes, "private" and "protected" may precede the word on that line) to the next
+unindented line of code, or to the next line, indented or not, that begins with a word which opens a
+declaration or another command. These words are listed in COMMAND_RX: def, theorem, abbrev,
+instance, structure, inductive, where, open, attribute and others; attributes, and modifiers such as
+private, noncomputable, unsafe or local, may precede them. Such a line ends the definition above it,
+and begins none that counts unless it is itself an unindented "def NAME". So a match in a theorem,
+an instance, a type's declaration or an "abbrev" that begins its line is not allowed, however far
+the line is indented. "where" is among the words, because what follows it are declarations of their
+own: an allowed definition cannot do its work in a "where" helper, and none does. Each pattern is
+searched in the whole text of a module, not line by line, so a match may span a line break ("=>"
+with the numeral on the next line; "pure", then "0"). A match is judged by the definition in which
+it begins. The rule goes by the definition, not by the line within it. The allowed definitions are
+per file: what is allowed in one file is allowed in no other. The verdict prints, for each entry,
+the definitions that it allows ("no definition" for an entry that allows none) and the number of
+modules in which it searched.
+
+The words of a verdict: "VERDICT", "YES" (where no letter stands beside it), "WITHIN LIMITS" and
+"PASSED", and the name Process.exit, in all modules below the root. Allowed in Line.text
+(OnBytes/Shell/Lines.lean), which makes the text of every line that the program prints on standard
+output, and in CallEnd.lastLine (OnBytes/Model/Stages.lean), which gives the last line of a result
+in the words of the repository's C++ verifier; only tests use it, by that file's own account. And in
+usage (OnBytes/Shell/Call.lean): see the next paragraph. "VERDICT" and Process.exit are searched
+although that text uses neither: they only reject more.
+
+Why usage is allowed, and what that gives up. usage is the help text, one string: the program shows
+it after a bad command line. Near its end it has a table of the last lines and their exit codes, for
+a reader, so it holds "YES", "WITHIN LIMITS" and, twice, "PASSED". The rule does not mean it: it is
+no verdict, and it is not printed where a verdict is. By our reading of the text it is printed on
+one road only: a bad command line becomes Kind.bad (in the same file), and faultWith
+(OnBytes/Shell/Ask.lean) writes that value's words once to standard error, prints nothing on
+standard output and ends the call with exit code 2; no road prints it with exit code 0. So such a
+call has no last line on standard output. That the ending fault, in which faultWith ends, does not
+have the code 0 follows from a theorem, which the build checks (status_zero, above). No theorem says
+that a bad call ends with 2 and that its words go to standard error: that is read, and no program
+checks it. Beside the reading there is one trial, with a program built from that text, which is not
+part of this repository (a slightly different build): in 2,621 calls the help text came in ten, all
+with a bad command line, and on standard error alone. What is given up: this entry holds as long as
+usage reaches faultWith alone. With the name in the table, a later change that sent it to standard
+output would no longer fail on these words. In every other definition of that file a word of the
+verdict is still rejected. (CallEnd's constructor usage, in OnBytes/Model/Stages.lean, is another
+thing: the model's ending for a bad command line. It does not print this text.)
+
+What makes a passing ending: ".yes", ".withinLimits", ".partPassed" and ".testPassed"; every name
+"Ending.x" and "CallEnd.x"; and "ofNat", whatever stands before it (Lean can generate a function of
+that name, which makes a value of a type from a number). This entry and the next search the modules
+that mention the type Ending or the type CallEnd, and not all: the other modules below the root use
+ofNat in many places, as an ordinary function. The allowed definitions, by what each does with a
+passing ending. Two build one: cpStagesRun (OnBytes/Model/Stages.lean) is the one place where
+CallEnd's yes, withinLimits and partPassed are built, in its last lines, from the stages' endings;
+finishWork (OnBytes/Shell/Ask.lean) is the one place where Ending's testPassed is built. Two replace
+one and never build one: earlyEnd and partEnd (OnBytes/Shell/Whole.lean) turn a passing result, at a
+place where none may come, into "NOT CHECKED". Two give the exit code of one: CallEnd.status and
+Ending.status, which name every ending once. Four choose or make the printed lines for one: the
+functions verdict and before, and Line.text (all in OnBytes/Shell/Lines.lean; the type Line has
+constructors of the same four names), and CallEnd.lastLine. And mainIO (OnBytes/Shell/Ops.lean)
+names Ending.fault, its answer to an exception. Reading an ending elsewhere ("| .yes .. => ..") is
+rejected too, on purpose.
+
+What turns an ending into a number: ".status", and Lean's generated ".ctorIdx", ".toCtorIdx" and
+".casesOn". Allowed in CallEnd.status and Ending.status themselves (the second calls the first), and
+in mainIO, whose last line returns the number.
+
+An exit code 0 or 3. These two are all the codes that mean "passed"; 4 says that a plan was derived
+and no proof was checked. The entry searches the modules that mention Ending, CallEnd or the type of
+an exit code ("IO UInt32", "BaseIO UInt32"); elsewhere 0 and 3 are ordinary numbers. It looks for
+them as a returned number (after "return" or "pure", also with "<|" or "$" between), as the value of
+a match arm, after "then" or "else", or with their type ("(0 : UInt32)"); zeros before the digit
+("00", "03") make no difference. Allowed in CallEnd.status and Ending.status, the only tables of the
+numbers; and in codeOf (OnBytes/Shell/Ops.lean) and Unread.ofCode (OnBytes/Shell/Lines.lean), where
+0 belongs to an error code of the operating system and is no exit code.
+
+An exit code of three digits or more, with "_", or in another base. main returns a UInt32, and a
+shell sees only its low eight bits: 256 reaches it as 0, and 259 as 3 (tried with "lean --run"; for
+a compiled program by our reading of the C code that Lean generates). A table entry that is turned
+into 256 would leave status_zero true and say "passed" to the shell. So one more entry searches, in
+the same written forms and the same modules, every decimal numeral of three digits or more, every
+numeral with "_" between its digits, and every numeral that is written with 0x, 0b or 0o, and allows
+them in no definition. The numbers 100 to 255, and small numbers in these other forms, are rejected
+too, though they are harmless: the rule only rejects more. As delivered, every code in
+CallEnd.status and Ending.status is below 256: they are 0, 1, 2, 3, 4, 5, 14 and 15.
+
+The exit code in the line for programs. That is the machine-readable line of a call's output, which
+begins "result-v1 status=". In it the passing code is written a second time. closingWhole and
+closingPart (OnBytes/Shell/Lines.lean) make the closing lines of a call, before its verdict. The
+function before (the same file) hands the numeral 0 to closingWhole, for yes and withinLimits alone,
+and closingWhole puts it into that line. An entry sees this coarsely: it searches the names
+closingWhole and closingPart themselves, in all modules below the root, and allows them only in
+their own definitions and in the function before. So no other definition can call these two. No
+pattern sees which numeral the function before hands over.
+
+Where a pass is born, upstream of the ending. Two more types have a passing value. StageEnd
+(OnBytes/Model/Stages.lean) says how a stage ends; its passed is built in lastLine
+(OnBytes/Model/Stages.lean) alone, on one line, behind the test goodEnding, and read in stageFault
+and passedWithWork (the same file). Verdict (OnBytes/Result.lean) is the verdict on a single file;
+its accepted is built in check (OnBytes/Proof/File.lean), in that function's text over a monad
+(check, OnBytes/ChecksWithHashAsArgument/M/Proof/File.lean), which is the one that the program runs,
+in product (OnBytes/Toy/Product.lean), links (OnBytes/Toy/Links.lean) and verdictOf
+(OnBytes/Shell/Toys.lean), and read in requestStage (OnBytes/Model/VerifyStages.lean), in its text
+over a monad (requestStage, OnBytes/ChecksWithHashAsArgument/M/Model/VerifyStages.lean) and in
+finishTest (OnBytes/Shell/Ask.lean). The entry searches ".passed", ".accepted" and every name
+"StageEnd.x" and "Verdict.x", in all modules below the root, and allows them in these eleven
+definitions. passedWithWork says whether some stage passed with a note on work: it compares each
+stage's ending with passed; it reads the stages' results and makes no ending. By our reading of the
+text only cpStagesRun calls it, in two tests, both under the option -no-proof-of-work. One ends the
+call as "NOT CHECKED" (exit code 5); the other adds a cause of "NOT-A-VERIFICATION" (exit code 14).
+Where neither applies, the call goes on as it does without the option. So, against the same call
+without the option, it can only take a pass away; it cannot give one. No program checks that
+reading. This much of it is a theorem, which the build checks: if a call with that option has a
+passing result, passedWithWork is false of its stages (cpStagesRun_option,
+OnBytes/Model/VerifyLawsOption.lean). Further upstream the same pass is a plain true, none or ".ok"
+(the Bool that goodEnding gives, for one): the entry sees only these last two typed layers.
+
+The lists held against Lean, once. The allowed definitions were compared once with what Lean itself
+has, on the compiled modules below the root: in the kernel's terms below main, ten constructors of
+OnBytes/ have yes, pass, accept or within in their names, and each is named only in definitions that
+the entries allow; six definitions give a UInt32 or an IO action that gives one: main,
+OnBytes.Shell.program, mainIO, codeOf, Ending.status and CallEnd.status. Nothing stood in Lean's
+list that the lists here lack. In the kernel's term a match goes through casesOn and names no
+constructor, so this look shows where such a value is built, handed on or compared, not where it is
+read. It was made once, outside this script: check.py does not repeat it. It was made with main
+defined by OnBytes.Shell.program, and not by OnBytes.Shell.programFront, which runs the checks'
+texts over a monad and by which the root defines main. With that root it has not been made:
+programFront, and the two definitions of these texts in the entry on where a pass is born, came to
+the lists by reading.
+
+Not caught. This rule catches a slip, not a forger. It does not catch: a passing constructor on
+another line of a definition that its entry allows; a declaration that begins in the middle of a
+line, or with a word that COMMAND_RX does not list, behind the last line of an allowed definition;
+such a word that a macro brings (the rule on the program's source rejects macros below the root); a
+number changed inside a table of exit codes (of the numbers, a theorem fixes this much: by
+status_zero only yes and withinLimits have the UInt32 value 0); an exit code that is computed, one
+of 256 or more among them: turned by arithmetic, by a table, or in a module that names none of the
+types by which the entry on the exit codes chooses its modules; an exit code that is compared, or
+handed on as an argument, as the function before hands 0 to closingWhole; a numeral at a place that
+the patterns do not know, such as behind the ":=" of a "let"; a word assembled from pieces or
+written with escapes ("\x59ES"); Process.exit as a bare "exit" after "open IO.Process" (by our
+reading the guards' command #guard_core would reject it in the build, because the function is not on
+its list; not tried); another name given to a type; "open", "export" or "namespace" with a type's
+name, after which a bare "yes" would be enough (OnBytes/Shell/Ask.lean and OnBytes/Shell/Whole.lean
+have "open .. (CallEnd)", which opens the type's name and not its constructors); a second definition
+with one of the allowed names in the same file.
+
+The default values: no text rule sees them, a test does. In compiled code a read beyond the end of
+an array, or a panic, gives the default value of the type. Ending's default is fault only because
+fault is its first constructor ("deriving Inhabited"), and Verdict, whose first constructor is
+accepted, has a refusal as its default only by the instance that is written out in
+OnBytes/Result.lean. If Ending's constructors were put in another order, or Verdict's instance gave
+way to "deriving Inhabited", the default would become another value, and no text rule would see it.
+OnBytes/Shell/TestWhole.lean holds the defaults of all four types (Verdict, Ending, StageEnd,
+CallEnd) by "#guard" commands, and OnBytes/Model/TestStages.lean those of CallEnd and StageEnd once
+more: with another default the file would not compile, and the step "build" would fail. guards.txt
+holds both files by their code ("The "#guard" commands are the listed ones"). A run of the text
+steps alone shows that these commands are written down, not that they hold. The default of UInt32
+itself is 0, the passing code. An instance that names a passing constructor is seen: the entry on
+passing endings, or the one on where a pass is born, rejects the name.
+
+The program's guards
+--------------------
+
+The guards themselves are in place. They are commands in a file that nothing imports, the guard file
+OnBytes/Guard/Program.lean. The commands, and the lists that they are given, are defined in six more
+files: Cmd.lean, Core.lean, Cone.lean, Csimp.lean, Allow.lean and Basic.lean in OnBytes/Guard/. A
+deleted import, a deleted command, an emptied list or a lengthened list of exceptions would make no
+build fail, and neither the replay nor the audit would miss what is gone: they check what is there.
+The names of these commands begin with "#guard", so the list scripts/guards.txt counts them too, and
+holds the sha256 of the guard file's code ("The "#guard" commands are the listed ones"). It has no
+row for the six other files, in which such a name stands only inside strings and comments. So:
+
+(a) The guard file is, with comments blanked and strings kept, exactly the lines in GUARDS: the
+imports, one option, the equation "main_eq" in its namespace, "#print axioms" on it, and the
+commands. In the same way the program's root, OnBytes/Main.lean, is exactly the lines in ENTRY: one
+import, and one line in which main calls OnBytes.Shell.programFront. Both are compared as whole
+files (WHOLE), indentation included, so no other line of code can stand before, between or after
+these. "main_eq", by rfl, holds for every main that unfolds to OnBytes.Shell.programFront, so the
+root's line itself is compared character by character (and its term by the command #guard_entry).
+Strings are kept because some arguments of the commands are strings.
+
+(b) OnBytes.Guard.Program reaches the program's root, OnBytes.Guard.Core and OnBytes.Guard.Cmd by
+its imports (GUARD_REACH). Nothing imports that module. It is compiled because lakefile.toml, whose
+sha256 is pinned in LAKE_FILES, counts every module under OnBytes/ to the library that "lake build"
+builds; and the step "build" fails for every Lean file of the library for which "lake build" leaves
+no compiled file. lakefile.toml has no executable target: "lake build" compiles every module under
+OnBytes/ as part of the library, the guard file and the files of theorems among them, and links no
+program. check.py links no program either, and runs none that is built from this library. A build
+that names the root module alone compiles only the modules below the root: not the guard file, and
+no file of theorems that these do not import; so the guards do not run in it. check.py does not
+build in that way. This rule itself reads text: a run with --only words shows that the guards are
+written down, not that they ran.
+
+(c) These files have the sha256 of their bytes written in check.py (GUARD_SUMS, which is made from
+the lines of GUARD_SUMS_TEXT: a sum and a path each). The seven files that make up the guards,
+commands and lists. OnBytes/Guard/Test.lean, which calls the check behind each command on small
+definitions with one fault each, and does not compile unless the check refuses. The program's root:
+its two lines are compared with comments blanked by code_of, and a definition could be hidden next
+to them at a place where code_of and Lean differ; a checksum misses nothing.
+OnBytes/Shell/Front.lean, which defines OnBytes.Shell.programFront, the function that main calls.
+OnBytes/Shell/Checks.lean, from whose record of checks that function takes the names, the places and
+the first tests, and which defines OnBytes.Shell.program, of which the theorems on the program are
+stated. OnBytes/Shell/FrontSame.lean, which proves that the two are one function
+(programFront_eq): through that equation a theorem on program speaks of what main calls; the program
+does not import this file.
+OnBytes/Shell/TestNames.lean, whose "#guard" commands test the characters of every name that
+the program can print (a line feed in a name would make two lines of one). And
+Run/Blake2b/LoadThm.lean, which is no guard: it has a local command, and the sum holds the whole
+file ("The program's source"). (a) and (b) are there to be read, and so that a sha256 which is
+updated without a look at the file does not carry a missing command past this step. After a
+deliberate change to one of these files, put the new sha256 there (sha256sum FILE), as for
+lakefile.toml; after one to the guard file, also its lines into GUARDS and its new row into
+guards.txt, and the new sha256 of guards.txt into GUARDS_SUM. (GUARDS_SUM is one sum, that of the
+list guards.txt; GUARD_SUMS is the table of this part, with one sum for each file.) Files of tests
+have no entries here beyond these two. The step "build" fails for a Lean file that is not compiled,
+and guards.txt holds every file that has "#guard" commands, by its whole code. What this does not
+catch: a file that nothing imports, that tests in another way than by "#guard" commands, and in
+which claimed-theorems.tsv names no theorem can lose a test, or be left out of a copy, and nothing
+fails ("The named theorems exist, and the audit checks them by name", "Not caught").
+
+(d) What a file means depends on what it imports. So that no imported module can redefine a guard's
+command, six words are rejected in every module that the guard file imports, except the files of
+GUARD_SUMS: macro_rules, syntax, elab_rules and command_elab, by which a command gets another
+reading or another meaning, and their short forms macro and elab, whatever they define. They are
+rejected whatever they are written for, a tactic too: more than is needed, on purpose. Apart from
+the files of GUARD_SUMS, the modules that the guard file imports use none of the six in their code.
+In modules that the guard file does not import the six words are not searched for. A legitimate use
+in a module that it does import would have to be listed in scan-exceptions.txt as a "CODE: " entry.
+Comments are blanked, strings are kept, and code_of's limits are as under "What the rule on the
+program's source does not catch", point 4.
+
+What the rule on the program's guards does not catch. Lean reads the guard file's text after the
+modules that the file imports, so a notation that is not local, an instance or a name that one of
+these declares is in force there (reasoned from Lean's text; not tried). Of such a notation below
+the root, "The program's source, (b) to (f)", (e), rejects only the plainly written forms. Against
+an instance that could lengthen the list of the command #guard_core, that list is written out in
+OnBytes/Guard/Core.lean, which imports no program. What would show such a change is what the guard
+file prints when it is compiled: the line "the cone of [main]" and the two equal counts of
+#guard_core; a person has to read these, no program does (the head of OnBytes/Guard/Program.lean;
+OnBytes/Guard/README.md, "The guard file: Program.lean", "Limits"). Also not caught: an attribute
+that has the effect of one of the six words and does not end in one. No text rule covers all that.
+The rule holds the root's call of OnBytes.Shell.programFront and the bytes of the file that defines
+that function, as mainIO with the checks' texts over a monad at the program's own two hash
+functions; the files of these texts (OnBytes/ChecksWithHashAsArgument/M/) are held by no sum, and
+what mainIO and the checks do the rule does not hold: that is the theorems' matter. It says nothing
+on whether the guards guard enough: their limits are told in OnBytes/Guard/README.md, and for some
+commands at the top of the guards' files. That page is no Lean file: check.py does not read it, and
+it does not enter the library's sha256. GUARDS, ENTRY, GUARD_REACH and GUARD_SUMS help only as far
+as check.py itself is trusted (README.md, "Against whom").
+
+The named theorems exist, and the audit checks them by name
+-----------------------------------------------------------
+
+Every Lean file of the library is compiled, replayed and searched for axioms; but a theorem file
+that nothing imports can be left out of a copy, and a line out of top-theorems.txt, and nothing
+fails: what is absent is not missed. So the step "words" has this rule, which reads text only:
+
+(a) scripts/claimed-theorems.tsv lists the named theorems. For each line its file
+must be among the library's files; for each "yes" line the theorem must be on a line of
+top-theorems.txt, so that the audit looks for it in the compiled files and fails if it is not there
+or is not a theorem.
+
+(b) The lines that may say "no" are listed in check.py (NO_ROWS). Otherwise a "yes" changed to "no:
+" and a reason, with its line removed from top-theorems.txt, would switch off the audit by name for
+that theorem, and nothing would fail (tried).
+
+Format of a line: fields separated by tabs. 1: the full name. 2: its file, relative to the parent
+directory of lean/ ("lean/.."). 5: "yes", or "no: " and the reason why the audit cannot take the
+name (it rejects a statement that depends on a name declared in two modules, and one that depends on
+no declaration of this library). For a "no" line the theorem must not be on a line of
+top-theorems.txt, and the file's text must contain, without indentation, "theorem" and the end of
+the name: that is a check of the text only, and it is all that is required of that theorem. The
+other fields are not read by check.py.
+
+Not caught: a theorem whose statement was weakened under its old name (read the listing); a theorem
+that a document names and the list does not; a file that nothing imports, in which the list names no
+theorem and guards.txt no command, and whose sha256 check.py does not hold (GUARD_SUMS): if it is
+left out of a copy, nothing fails.
+
+The "#guard" commands are the listed ones
+-----------------------------------------
+
+A "#guard" command is a test that Lean evaluates while it compiles the file: the build fails if the
+test is false. It leaves no declaration, so if one were taken out or weakened, neither the replay
+nor the audit would notice. So scripts/guards.txt lists every Lean file of the library that has such
+commands, and the step "words" compares. A row: the path, how many commands the file has, and the
+sha256 of the file's code, separated by tabs.
+
+A command is counted wherever "#guard" stands at the start of a line or after a blank, in the text
+with comments, strings and character literals blanked (so "#guard_msgs" counts too, and so does a
+command behind "open Nat in"). The sum is taken over the whole file and not over the commands alone,
+because code around a command can weaken it or keep Lean from reaching it: a line that continues the
+command's term, a "#guard_msgs in" before it, a local notation or instance above it. The code is the
+file's text with comments blanked and with strings and character literals kept (the expected values
+are such literals), without trailing blanks and empty lines: a change to a comment's words moves no
+sum, and any change to the code of a listed file does.
+
+The verdict fails for a listed file that is gone, has no such command, has another number of them or
+has other code; for a file that has such commands and no row; for a row that cannot be read; and if
+guards.txt itself does not have the sha256 that check.py holds (GUARDS_SUM). After a deliberate
+change to a listed file, read the change; the run prints the row as it would now be; put it into
+guards.txt and the list's new sha256 into GUARDS_SUM, in the same change.
+
+Not caught: a place that code_of and Lean read differently ("How comments are blanked"): text that
+code_of takes for a command and Lean for a comment is counted and never evaluated. A change in a
+file that a listed file imports (a definition, a notation, an instance, a macro that rewrites the
+command itself) that alters what a command tests: if that file has no command of its own, no row
+covers it. The expected output of a "#guard_msgs in" command: it stands in the comment above the
+command, is not part of the sum, and is whatever the copy says. Whether the listed tests test
+enough. GUARDS_SUM helps only as far as check.py itself is trusted (README.md, "Against whom").
+
+The front's compiled statements are the listed ones
+---------------------------------------------------
+
+On a line of top-theorems.txt that says "general" the audit checks that the theorem exists, is a
+theorem and rests on no axiom but propext, Classical.choice and Quot.sound, and it prints the
+compiled statement; it compares the statement with nothing. So a statement could be weakened under
+its old name, and only a reader of the listing would see it. For the theorems at the front of the
+library check.py closes that gap with a text: scripts/front-statements.txt holds each one's compiled
+statement as the audit's listing prints it, and after the audit check.py compares it with this run's
+listing, to the letter. The verdict is one of the audit's.
+
+A block of the file: "=== " and the theorem's full name; "in full: " and a sha256; then the
+statement. The statement is printed from the compiled file, not from the source: without notations,
+with implicit arguments hidden. The sha256 is of the same statement printed with all implicit and
+instance arguments, which is too long to read (up to some 800,000 characters) and is compared by its
+sum: so a change to an argument that the readable form hides is seen too.
+
+Every theorem of claimed-theorems.tsv whose file lies in VerifiableInference/ must have a block,
+unless check.py's NO_ROWS names it ("The named theorems"): so no theorem can be
+taken out of this comparison by a change to the lists alone. The verdict fails for such a theorem
+without a block; for a block whose theorem is not in the listing (it must be a line of
+top-theorems.txt); for a statement, or a sum, that differs; for a block that cannot be read; for a
+theorem whose name heads two blocks of the listing; if the listing does not have its lines
+"statement in full (" and "binders after unfolding " once for each theorem (a printed name can hold
+line breaks and imitate them); if there is no listing; and if the file does not have the sha256 that
+check.py holds (STATEMENTS_SUM). After a deliberate change to a statement, run check.py: where the
+verdict fails it writes the blocks as this run's listing has them, with their sums, into
+front-statements.now.txt beside the logs. Read the new statement there, copy its block over the old
+one, and put the file's new sha256 into STATEMENTS_SUM, in the same change.
+
+The file may also hold blocks of theorems whose files lie in other directories: check.py compares
+every block of the file in the same way, wherever the theorem's file lies. The file's first lines
+say how many such blocks it has; they stand behind the others. No rule asks for them: such a block
+can be taken out of the file, with a new STATEMENTS_SUM, and no verdict fails.
+
+Not caught: a change to a definition that a statement names. The statement then reads the same and
+means something else; the listing prints every such definition, with type and value, and its sha256
+is printed at the end of a run ("the listing"), but check.py compares the definitions with nothing.
+A theorem that no document names, or that lies in another directory and has no block. Whether the
+statement means what the documents say. What is compared is printed text, not terms: what Lean's
+printer does not show even with all implicit arguments is not compared (by our reading of Lean, not
+tried: universe levels, proofs inside a statement, which are printed as "⋯", the types of the
+variables of a "fun"). The text depends on Lean's printer: with another version of Lean the same
+statement may be printed otherwise. STATEMENTS_SUM helps only as far as check.py itself is trusted
+(README.md, "Against whom").
+
+How many lines of each kind
+---------------------------
+
+Only on a closed line or a headline of top-theorems.txt does the audit give a verdict on binders and
+on Classical.choice. A list from which such lines have been taken, or in which they have been made
+general, would pass with fewer verdicts. So check.py holds the number of lines of each kind (KINDS),
+and the step "words" compares. The list has general lines alone: the audit's form for a headline
+does not fit the front's statements (their predicates take instance arguments, and a relation is
+handed over partly applied). So no theorem gets a verdict on binders or on Classical.choice; the
+counts say so, and so does the last line of a run that passes.
+
+Not caught: which theorems the lines name. A line swapped for another of the same kind keeps the
+numbers; a theorem that no document names can leave the list that way (a named one cannot: "The
+named theorems"). KINDS helps only as far as check.py itself is trusted
+(README.md, "Against whom").

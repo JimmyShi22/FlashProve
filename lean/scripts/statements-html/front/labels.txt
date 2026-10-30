@@ -1,0 +1,46 @@
+brand | Lean statements · FlashProve
+title | What an accepted proof shows: the statement, the model, the verifier
+html-title | FlashProve: what an accepted proof shows, in words beside Lean
+subtitle | Statements and definitions of FlashProve's Lean library, explained in words next to their Lean code.
+byline | Each card shows one declaration in rows: words on the left, its Lean code on the right, without the docstring above it (that is in the side panel); a theorem's code ends at the sign that opens its proof. Hover a Lean name to read its declaration in place; click to open it in the side panel.
+tiles-title | The statements, at a glance
+tiles-note | Summaries. §1 and §6 state the properties for any argument system (the cards Sound, CompleteOn and ZeroKnowledgeOn); the six theorems state them for FlashProve, with the numbers given in §4.4, under "The numbers".
+rows-words | In words
+rows-lean | In Lean
+remark | Remark
+type-definition | Definition
+type-target | Statement
+type-proved | Theorem
+chip-definition |
+chip-target |
+chip-proved |
+description | Statements and definitions of FlashProve's Lean library, explained in words next to their Lean code.
+limits-link | Limits:
+appendix | Appendix: index of every declaration embedded in this page (navigation only)
+search-hint | filter: e.g. Sound, CompleteOn, ZeroKnowledgeOn …
+definitions-count | {definitions} definition{s:definitions} in {files} file{s:files}
+back | The front page: what an accepted proof shows
+tip-definition | a definition of this library
+tip-target | a definition of type Prop: a sentence to be proved for an argument system
+tip-proved | a theorem of this library
+fold-count | {cards} card{s:cards}
+group-Cb | The sub-protocols over codes (linear tests, lookups, folds), with the field and the statement on codes
+group-Cm | The model's relations: index, witness table, layer conditions
+group-Compile | Compiler from interactive oracle proofs to non-interactive arguments
+group-Decl | Declared structure: what is public before any proof
+group-E2E | The protocol as one object and its honest provers
+group-Fmt | The byte format's rules as functions on bytes
+group-Hiop | Holographic interactive oracle proofs with an untrusted committer
+group-Inst | The integer model and its relations on requests
+group-IntegerModel | The model in integer arithmetic, its window and its next token
+group-Iop | Interactive oracle proofs: protocols, batches, the compiler's interface
+group-Ior | Interactive oracle reductions and their sequential composition
+group-Johnson | The protocol's description, the soundness theorem on verify, the compiler, and their lemmas
+group-Ladder.lean | The typed proof, the parser, the compiler's input, and further definitions on a description of the protocol
+group-Ladder | The stored public files, the parameter file's lines, and a statement on completeness for any description
+group-OnBytes | Lean functions on bytes that the cards use
+group-Rom | The random-oracle model: oracle algorithms, sampling, query costs
+group-Run | BLAKE2b; typed queries as the format's hashes; protocols from the format's plans
+group-VerifiableInference | Statements about argument systems, and the random-oracle model
+group-ZKCP | Definitions of doubly zero-knowledge commit-and-prove arguments, and what follows from them
+contents-depth | sections

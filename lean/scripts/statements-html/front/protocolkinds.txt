@@ -1,0 +1,18 @@
+kind	offline IOP	link IOP	online IOP	all
+Oracle message with out-of-domain sample	5	1	54	60
+Code switch between segments	0	0	25	25
+Product-tree lookup argument	2	0	50	52
+Layer-segment sumchecks	0	0	12	12
+Attention-segment sumchecks	0	0	12	12
+Output-head sumchecks	0	0	1	1
+Next-token message	0	0	1	1
+Draw of the approximate range proof	0	0	25	25
+Segment claim batching	0	0	75	75
+Segment-closing row fold	0	0	25	25
+Output-head committed-table sumcheck	0	0	1	1
+Proximity test with linear constraints	4	1	4	9
+Committed-table claim merge	1	0	1	2
+Committed-table claim reduction	7	0	7	14
+Two-table comparison steps	0	4	0	4
+none	16	2	81	99
+all	35	8	374	417

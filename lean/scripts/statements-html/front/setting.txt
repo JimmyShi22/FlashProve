@@ -1,0 +1,27 @@
+**What the Lean verification establishes.** The Lean library puts together the following items.
+- (1) **Model.** A formally defined integer quantization `modelNextToken` of the model being served, as a function from weights and a list of tokens to the next token ([§2](#sec-model), [Appendix C](#sec-app-model)).
+- (2) **IOP.** An interactive oracle proof `flashProve` for the claim that given output tokens are this model's output on a given prompt, at committed weights. It is formalized as a holographic IOP ([§3](#sec-protocol), [Appendix A](#sec-app-protocol)).
+- (3) **Compilation.** The BCS compilation `compile (flashProve setup)` of (2) in the random oracle model ([§4](#sec-compiler)).
+- (4) **Security.** Proofs that (3) is complete, sound and statistically zero knowledge in the random oracle model. Formally, these are the six theorems in [Final statements](#sec-top), which hold for public files that form a public setup ([A public setup](#sec-setup)).
+- (5) **Hash function.** A definition of BLAKE2b in Lean, and `blake2bHash`, the hash function on bit strings built from it ([Appendix B](#sec-app-hash)).
+- (6) **Fiat–Shamir verifier.** `leanVerifier`, which the cards call the Lean verifier: the verifier of (3) with `blake2bHash` in place of the random oracle (its definition is in [Final statements](#sec-top)). Under the Fiat–Shamir heuristic it inherits the soundness proved in (4).
+- (7) **Executable verifier.** `executableVerifier`, a Lean function that can be run and is proved to return the verdict of `leanVerifier` (the theorem `executableVerifier_eq_leanVerifier`, also in [Final statements](#sec-top)).
+**Goals.** FlashProve's code is cryptographic and was largely written by AI systems. Formal verification is meant to make its security independent of trust in that code. Items (1) to (4) specify the protocol in Lean and prove completeness, soundness and zero knowledge in the random oracle model (the precise forms are under “The statements, at a glance”, below). The following gaps remain.
+- **The statements must say what is meant.** Lean does not check this. A person has to read the statements and the definitions under them, and this page is for that.
+- **The programs that run must implement (3).** How this is addressed depends on the property.
+-- **Soundness** depends on the verifier alone. Items (5) to (7) provide one that can be run. Nothing is proved about the faster C++ verifier.
+-- **Completeness** concerns honest parties and can be tested: run a prover, then the verifier of (7) on its output ([Running the verifier](#sec-running)).
+-- **Zero knowledge** depends on the prover alone. A prover program has to be audited against the honest prover of (3), which is a Lean definition that cannot be run and of which this page shows only part ([§6](#sec-provider)).
+**In particular, a reader who only needs to trust the verifier has to:**
+- read the definition `Sound` ([§1](#sec-soundness)) and the theorem `sound` of (4);
+- read the definitions of the compiler's verifier in (3) ([§4.2](#sec-compiler-step), [§4.3](#sec-compiler-tree)) and the definition (6);
+- read the theorem `executableVerifier_eq_leanVerifier` of (7);
+- skim the definitions of the model (1) and of BLAKE2b (5);
+- check the conditions on the public files ([A public setup](#sec-setup)); the verifier does not test that they specify exact match.
+That `executableVerifier` is then sound is a conclusion, not a theorem. By the theorem of (7) it returns the verdict of `leanVerifier` on the files of a public setup, and that `leanVerifier` is sound rests on the Fiat–Shamir heuristic of (6) and on assumptions listed in [§11](#sec-limits). The conclusion is about the Lean function `executableVerifier`; what a run of the command lean-verify adds to it is described in [Running the verifier](#sec-running).
+**Checking the proofs yourself.** To check the proofs, go to the directory `lean/` of this repository and run `lake exe cache get && LEAN_ABORT_ON_PANIC=1 lake build` to compile and type-check the library. A build does not fail on an unfinished proof or on an added axiom. For these, and for a second check of every compiled module by Lean's kernel, run `python3 -B scripts/check.py` afterwards: it rebuilds the library in a scratch copy, replays it in the kernel and verifies that no declaration depends on an axiom other than Lean's standard ones (`propext`, `Classical.choice`, `Quot.sound`). On the machine used for this release (84 cores, 960 GiB of memory) the script took four and a half hours; lean/CHECKING.md gives the steps, the requirements and what a pass shows. For standard guidelines see the chapter “Validating a Lean Proof” of the Lean reference manual (lean-lang.org/doc/reference/latest/ValidatingProofs/). Lean's kernel is trusted, not proved correct, and the pinned version, 4.29.1, predates fixes for publicly known soundness bugs in the kernel ([§11](#sec-limits)).
+**Further down**
+- [A public setup](#sec-setup), in “What the theorems refer to”, lists the conditions. The library defines one public setup, namely the public files of a stored example with synthetic weights.
+- [Running the verifier](#sec-running) says what the command lean-verify evaluates, what is proved about it, where files are parsed, what is trusted, and what was run.
+- [§4](#sec-compiler) opens with the definitions of the compiler's verifier.
+- Limits and gaps are listed in [§11](#sec-limits), lean/LIMITS.md and lean/GAPS.md. §11 also says what this page contains and what it does not show.

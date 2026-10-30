@@ -1,0 +1,3 @@
+class | Statement | A Lean definition of type Prop: a sentence about an argument system.
+thm | Theorem | Proved in Lean.
+def | Definition | A definition that the statements or the verifier are written in.

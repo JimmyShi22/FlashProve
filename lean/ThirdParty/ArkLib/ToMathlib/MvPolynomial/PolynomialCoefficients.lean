@@ -1,0 +1,374 @@
+/-
+Copyright (c) 2026 ArkLib Contributors. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Quang Dao
+-/
+/-
+Adapted from ArkLib (https://github.com/Verified-zkEVM/ArkLib), file
+ArkLib/ToMathlib/MvPolynomial/PolynomialCoefficients.lean, commit
+2817d8c7d2f28d706b17f8de0f885880d0b2eb13. Licence: Apache-2.0, see ThirdParty/ArkLib/LICENSE.
+Changes ("this Mathlib" is Mathlib at commit 5e932f97dd25535344f80f9dd8da3aab83df0fe6, which this
+library uses):
+* 23 of the 46 declarations of the file are kept. Kept are those that the proofs of
+  ReedSolomon.exists_johnson_line_exactCorrelatedPair and
+  ReedSolomon.HiddenDerivative.johnsonExceptionCount_le_comparisonEstimate use or name, directly or
+  through other declarations, and simp lemmas and instances about those (see ThirdParty/README.md,
+  "What was cut"). ArkLib's comment at the top of the file is unchanged and may name declarations
+  that are not kept.
+* ArkLib is written for Lean 4.34 and its module system. This is an ordinary file for Lean 4.29.1:
+  the words of the module system are removed, the import lines are set for this Mathlib, and the
+  modules of ArkLib have the prefix ThirdParty.
+* Proof changed, coeffNatDegreeLE_X: the general coefficient lemma is called by its name in this
+  Mathlib, coeff_X'.
+* Proof changed, CoeffNatDegreeLE.add: MvPolynomial.coeff_add in place of
+  AddMonoidAlgebra.coeff_add.
+-/
+
+import ThirdParty.ArkLib.ToMathlib.MvPolynomial.ClearedSubstitution
+import ThirdParty.ArkLib.ToMathlib.MvPolynomial.RootContraction
+import ThirdParty.ArkLib.ToMathlib.RingTheory.MvPolynomial.CappedBidegree
+
+/-!
+# Multivariate polynomials with univariate polynomial coefficients
+
+A polynomial `P : MvPolynomial σ R[X]` has two kinds of degree: the degree in the variables `σ`,
+and the degree in `X` of its coefficients. Mathlib's `MvPolynomial.optionEquivRight` identifies
+`MvPolynomial σ R[X]` with `MvPolynomial (Option σ) R`, where the variable `none` is `X`.
+
+This file records both degrees.
+
+* `MvPolynomial.CoeffNatDegreeLE P h` says that every coefficient of `P` has `natDegree ≤ h`.
+  `MvPolynomial.coeffNatDegree` computes such a bound from the finite support. The
+  predicate is closed under sums and products (the bounds add), and under substitution of
+  polynomials whose coefficients are constants, which includes formal differentiation. Cleared
+  substitution has a corresponding coefficient-degree bound.
+* `MvPolynomial.jointTotalDegree P` is the total degree of `P` read in `MvPolynomial (Option σ) R`,
+  so that `X` counts as one more variable. It is at most `h + P.totalDegree` when every
+  coefficient has degree at most `h`, and cleared substitutions satisfy a monomialwise bound.
+
+## Main statements
+
+* `MvPolynomial.aeval_map_optionEquivRight` and
+  `MvPolynomial.aeval_optionEquivRight_symm`: evaluation through the flattened variable
+  equivalence.
+* `MvPolynomial.optionEquivRight_symm_pderiv`: partial derivatives in a polynomial coefficient
+  variable agree with the corresponding derivative after flattening.
+* `MvPolynomial.CoeffNatDegreeLE` and its closure lemmas, including
+  `MvPolynomial.coeffNatDegree`, `MvPolynomial.coeffNatDegreeLE_coeffNatDegree`,
+  `MvPolynomial.CoeffNatDegreeLE.map_coefficients`, `MvPolynomial.CoeffNatDegreeLE.aeval`,
+  `MvPolynomial.CoeffNatDegreeLE.pderiv`, `MvPolynomial.CoeffNatDegreeLE.iterate_pderiv`, and
+  `MvPolynomial.CoeffNatDegreeLE.clearedSubstitution`.
+* `MvPolynomial.optionEquivRight_symm_mem_restrictBidegree`: coefficient and jet degree bounds
+  give a bidegree bound after flattening.
+* `MvPolynomial.optionEquivRight_symm_mem_restrictCappedBidegree`: coefficient, total-degree, and
+  coordinate bounds give a cap after flattening, using the weighted-degree identity for the
+  coordinate bound.
+* `MvPolynomial.eval_map_coefficients`: evaluation after a coefficient map agrees with direct
+  evaluation into the target semiring.
+* `MvPolynomial.jointTotalDegree`, its ring-operation bounds, `jointTotalDegree_C_le`,
+  `jointTotalDegree_le_of_natDegree_coeff_le` and its form
+  `CoeffNatDegreeLE.jointTotalDegree_le`, and `jointTotalDegree_clearedSubstitution_le`.
+-/
+
+namespace MvPolynomial
+
+noncomputable section
+
+open scoped BigOperators
+
+variable {R σ τ : Type*} [CommSemiring R]
+
+/-! ### The inverse of `optionEquivRight` on generators -/
+
+/-- The inverse of `optionEquivRight` sends the variable `i` to the variable `some i`. -/
+@[simp]
+theorem optionEquivRight_symm_X (i : σ) :
+    (optionEquivRight R σ).symm (X i) = X (some i) := by
+  apply (optionEquivRight R σ).injective
+  simp
+
+/-- The inverse of `optionEquivRight` sends a constant `p : R[X]` to `p` evaluated at the variable
+`none`. -/
+@[simp]
+theorem optionEquivRight_symm_C (p : Polynomial R) :
+    (optionEquivRight R σ).symm (C p) = Polynomial.aeval (X none) p := by
+  apply (optionEquivRight R σ).injective
+  rw [AlgEquiv.apply_symm_apply, ← Polynomial.aeval_algHom_apply, optionEquivRight_X_none]
+  have h := Polynomial.aeval_algHom_apply
+    (IsScalarTower.toAlgHom R (Polynomial R) (MvPolynomial σ (Polynomial R))) Polynomial.X p
+  simpa [Polynomial.aeval_X_left_apply, algebraMap_eq] using h.symm
+
+/-- Evaluating a flattened polynomial after specializing its distinguished variable is the same
+as evaluating the original polynomial in all its variables. -/
+theorem aeval_map_optionEquivRight {A σ : Type*} [CommSemiring A] [Algebra R A]
+    (x : Option σ → A) (p : MvPolynomial (Option σ) R) :
+    aeval (fun j ↦ x (some j))
+      (MvPolynomial.map (Polynomial.aeval (x none)).toRingHom
+        (optionEquivRight R σ p)) =
+        aeval x p := by
+  induction p using MvPolynomial.induction_on with
+  | C c => simp
+  | add p q hp hq => simp only [map_add, hp, hq]
+  | mul_X p i hp =>
+    simp only [map_mul, hp]
+    congr 1
+    cases i <;> simp
+
+/-- Evaluating the inverse flattened-variable equivalence first evaluates the distinguished
+polynomial variable, then evaluates the remaining variables. -/
+theorem aeval_optionEquivRight_symm {A σ : Type*} [CommSemiring A] [Algebra R A]
+    (x : Option σ → A) (p : MvPolynomial σ (Polynomial R)) :
+    aeval x ((optionEquivRight R σ).symm p) =
+      aeval (fun j ↦ x (some j))
+        (MvPolynomial.map (Polynomial.aeval (x none)).toRingHom p) := by
+  simpa only [AlgEquiv.apply_symm_apply] using
+    (aeval_map_optionEquivRight (R := R) x ((optionEquivRight R σ).symm p)).symm
+
+/-! ### Degree bounds on the coefficients -/
+
+/-- Every coefficient of `P : MvPolynomial σ R[X]` has `natDegree` at most `h`. -/
+def CoeffNatDegreeLE (P : MvPolynomial σ (Polynomial R)) (h : ℕ) : Prop :=
+  ∀ m, (P.coeff m).natDegree ≤ h
+
+/-- A constant `p` has coefficient degree at most `h` when `p.natDegree ≤ h`. -/
+theorem coeffNatDegreeLE_C {p : Polynomial R} {h : ℕ} (hp : p.natDegree ≤ h) :
+    CoeffNatDegreeLE (C p : MvPolynomial σ (Polynomial R)) h := by
+  classical
+  intro m
+  rw [coeff_C]
+  split_ifs
+  · exact hp
+  · simp
+
+/-- A variable has coefficient degree zero. -/
+theorem coeffNatDegreeLE_X (i : σ) :
+    CoeffNatDegreeLE (X i : MvPolynomial σ (Polynomial R)) 0 := by
+  classical
+  intro m
+  rw [coeff_X']
+  split_ifs <;> simp
+
+/-- A polynomial with coefficients in `R`, mapped into `R[X]`, has coefficient degree zero. -/
+theorem coeffNatDegreeLE_map_C (P : MvPolynomial σ R) :
+    CoeffNatDegreeLE (map Polynomial.C P) 0 := by
+  intro m
+  rw [coeff_map, Polynomial.natDegree_C]
+
+/-- A finite sum has coefficient degree at most `h` when every summand does. -/
+theorem coeffNatDegreeLE_sum {ι : Type*} (s : Finset ι)
+    (P : ι → MvPolynomial σ (Polynomial R)) {h : ℕ}
+    (hP : ∀ i ∈ s, CoeffNatDegreeLE (P i) h) : CoeffNatDegreeLE (∑ i ∈ s, P i) h := by
+  intro m
+  rw [coeff_sum]
+  exact Polynomial.natDegree_sum_le_of_forall_le _ _ fun i hi ↦ hP i hi m
+
+private theorem weightedTotalDegree_finsetSum_le {ι : Type*} (w : σ → ℕ)
+    (s : Finset ι) (P : ι → MvPolynomial σ R) (d : ℕ)
+    (hP : ∀ i ∈ s, (P i).weightedTotalDegree w ≤ d) :
+    (∑ i ∈ s, P i).weightedTotalDegree w ≤ d := by
+  unfold MvPolynomial.weightedTotalDegree
+  exact (AddMonoidAlgebra.supDegree_sum_le.trans
+    (Finset.sup_le fun i hi ↦ hP i hi))
+
+private theorem weightedTotalDegree_X_eq [Nontrivial R] (w : σ → ℕ) (i : σ) :
+    (X i : MvPolynomial σ R).weightedTotalDegree w = w i := by
+  classical
+  rw [show (X i : MvPolynomial σ R) = monomial (Finsupp.single i 1) 1 by rfl]
+  rw [weightedTotalDegree_monomial _ _ _ one_ne_zero]
+  rw [Finsupp.weight_single]
+  simp
+
+private theorem weightedTotalDegree_optionEquivRight_symm_C_le [Nontrivial R]
+    (p : Polynomial R) :
+    ((optionEquivRight R σ).symm (C p)).weightedTotalDegree
+      (fun i : Option σ ↦ i.elim 1 fun _ ↦ 0) ≤ p.natDegree := by
+  classical
+  rw [optionEquivRight_symm_C]
+  have he : Polynomial.aeval (X none : MvPolynomial (Option σ) R) p =
+      ∑ n ∈ p.support, MvPolynomial.C (p.coeff n) * X none ^ n := by
+    simpa [Polynomial.sum_def] using congrArg
+      (Polynomial.aeval (X none : MvPolynomial (Option σ) R)) p.sum_monomial_eq.symm
+  rw [he]
+  apply weightedTotalDegree_finsetSum_le
+  intro n hn
+  apply (weightedTotalDegree_mul_le _ _ _).trans
+  simp only [weightedTotalDegree_C, zero_add]
+  apply (weightedTotalDegree_pow_le _ _ _).trans
+  rw [weightedTotalDegree_X_eq]
+  simpa using Polynomial.le_natDegree_of_mem_supp n hn
+
+private theorem weightedTotalDegree_someX_prod_zero [Nontrivial R]
+    (s : Finset σ) (e : σ → ℕ) :
+    (∏ i ∈ s, (X (some i) : MvPolynomial (Option σ) R) ^ e i).weightedTotalDegree
+      (fun i ↦ i.elim 1 fun _ ↦ 0) = 0 := by
+  classical
+  induction s using Finset.induction_on with
+  | empty =>
+    change (C (1 : R) : MvPolynomial (Option σ) R).weightedTotalDegree _ = 0
+    exact weightedTotalDegree_C _ _
+  | @insert i s hi ih =>
+    rw [Finset.prod_insert hi]
+    have hpow :
+        (X (some i) ^ e i : MvPolynomial (Option σ) R).weightedTotalDegree
+          (fun i ↦ i.elim 1 fun _ ↦ 0) ≤ 0 := by
+      exact (weightedTotalDegree_pow_le _ _ _).trans (by
+        rw [weightedTotalDegree_X_eq]
+        simp)
+    apply Nat.eq_zero_of_le_zero
+    exact (weightedTotalDegree_mul_le _ _ _).trans
+      (by simpa using Nat.add_le_add hpow (le_of_eq ih))
+
+namespace CoeffNatDegreeLE
+
+variable {P Q : MvPolynomial σ (Polynomial R)} {a b : ℕ}
+
+/-- The degree bound can be increased. -/
+theorem mono (hP : CoeffNatDegreeLE P a) (h : a ≤ b) : CoeffNatDegreeLE P b :=
+  fun m ↦ (hP m).trans h
+
+/-- Sums keep a common coefficient degree bound. -/
+theorem add (hP : CoeffNatDegreeLE P a) (hQ : CoeffNatDegreeLE Q a) :
+    CoeffNatDegreeLE (P + Q) a := by
+  intro m
+  rw [coeff_add]
+  exact (Polynomial.natDegree_add_le _ _).trans (max_le (hP m) (hQ m))
+
+/-- Coefficient degree bounds add under products. -/
+theorem mul (hP : CoeffNatDegreeLE P a) (hQ : CoeffNatDegreeLE Q b) :
+    CoeffNatDegreeLE (P * Q) (a + b) := by
+  classical
+  intro m
+  rw [coeff_mul]
+  exact Polynomial.natDegree_sum_le_of_forall_le _ _ fun p _ ↦
+    Polynomial.natDegree_mul_le_of_le (hP p.1) (hQ p.2)
+
+/-- The `n`-th power multiplies the coefficient degree bound by `n`. -/
+theorem pow (hP : CoeffNatDegreeLE P a) (n : ℕ) : CoeffNatDegreeLE (P ^ n) (n * a) := by
+  induction n with
+  | zero => simpa using coeffNatDegreeLE_C (σ := σ) (p := (1 : Polynomial R)) (h := 0) (by simp)
+  | succ n ih => simpa [pow_succ, Nat.succ_mul] using ih.mul hP
+
+/-- Substituting polynomials whose coefficients are constants keeps the coefficient degree
+bound. -/
+theorem aeval (hP : CoeffNatDegreeLE P a) (f : σ → MvPolynomial τ (Polynomial R))
+    (hf : ∀ i, CoeffNatDegreeLE (f i) 0) : CoeffNatDegreeLE (MvPolynomial.aeval f P) a := by
+  classical
+  rw [P.as_sum, map_sum]
+  apply coeffNatDegreeLE_sum
+  intro m _
+  rw [aeval_monomial]
+  have hp : CoeffNatDegreeLE (m.prod fun i k ↦ f i ^ k) 0 := by
+    rw [Finsupp.prod]
+    induction m.support using Finset.induction_on with
+    | empty =>
+      simpa using coeffNatDegreeLE_C (σ := τ) (p := (1 : Polynomial R)) (h := 0) (by simp)
+    | insert i s _ ih =>
+      rw [Finset.prod_insert ‹_›]
+      simpa using ((hf i).pow (m i)).mul ih
+  simpa using (coeffNatDegreeLE_C (σ := τ) (hP m)).mul hp
+
+/-- Formal differentiation keeps the coefficient degree bound. -/
+theorem pderiv (hP : CoeffNatDegreeLE P a) (i : σ) :
+    CoeffNatDegreeLE (MvPolynomial.pderiv i P) a := by
+  intro m
+  have hc : ((m i : Polynomial R) + 1) = Polynomial.C ((m i : R) + 1) := by simp
+  rw [coeff_pderiv, hc]
+  exact Polynomial.natDegree_mul_le_of_le (hP (m + Finsupp.single i 1))
+    (Polynomial.natDegree_C _).le
+
+end CoeffNatDegreeLE
+
+/-- Mapping the coefficient polynomials along a ring homomorphism does not increase their
+`natDegree` bound. -/
+theorem CoeffNatDegreeLE.map_coefficients {S : Type*} [CommSemiring S]
+    (f : R →+* S) (P : MvPolynomial σ (Polynomial R)) {h : ℕ}
+    (hP : CoeffNatDegreeLE P h) :
+    CoeffNatDegreeLE (MvPolynomial.map (Polynomial.mapRingHom f) P) h := by
+  intro m
+  rw [MvPolynomial.coeff_map]
+  exact Polynomial.natDegree_map_le.trans (hP m)
+
+/-- Clearing a substitution preserves the coefficient-degree bound, with the denominator budget
+`H` contributing at most `H * h` and the coefficients of `Q` contributing at most `a`. -/
+theorem CoeffNatDegreeLE.clearedSubstitution
+    {τ : Type*} (S : MvPolynomial σ (Polynomial R))
+    (N : τ → MvPolynomial σ (Polynomial R)) (d : τ → ℕ) (H h a : ℕ)
+    (Q : MvPolynomial τ (Polynomial R))
+    (hS : CoeffNatDegreeLE S h)
+    (hN : ∀ i, CoeffNatDegreeLE (N i) (d i * h))
+    (hden : ∀ m ∈ Q.support, Finsupp.weight d m ≤ H)
+    (hQ : ∀ m ∈ Q.support, (Q.coeff m).natDegree ≤ a) :
+    CoeffNatDegreeLE (MvPolynomial.clearedSubstitution C S N d H Q) (H * h + a) := by
+  classical
+  unfold MvPolynomial.clearedSubstitution
+  apply coeffNatDegreeLE_sum
+  intro m hm
+  have hprod : CoeffNatDegreeLE (∏ i ∈ m.support, N i ^ m i)
+      (Finsupp.weight d m * h) := by
+    have hp : CoeffNatDegreeLE (∏ i ∈ m.support, N i ^ m i)
+        (∑ i ∈ m.support, (d i * m i) * h) := by
+      induction m.support using Finset.induction_on with
+      | empty =>
+        simp only [Finset.prod_empty]
+        simpa using coeffNatDegreeLE_C (σ := σ) (p := (1 : Polynomial R))
+          (h := 0) (by simp)
+      | @insert i s hi ih =>
+        rw [Finset.prod_insert hi, Finset.sum_insert hi]
+        simpa only [Nat.mul_assoc, Nat.mul_comm, Nat.mul_left_comm] using
+          ((hN i).pow (m i)).mul ih
+    simpa only [Finsupp.weight_apply, Finsupp.sum, smul_eq_mul, Finset.sum_mul,
+      Nat.mul_assoc, Nat.mul_comm, Nat.mul_left_comm] using hp
+  have hpow := hS.pow (H - Finsupp.weight d m)
+  have hterm := ((coeffNatDegreeLE_C (hQ m hm)).mul hprod).mul hpow
+  apply hterm.mono
+  have hbudget := Nat.sub_add_cancel (hden m hm)
+  nlinarith
+
+/-- Flattening turns a coefficient-degree bound into a degree bound in the distinguished variable.
+-/
+theorem weightedTotalDegree_optionEquivRight_symm_coefficientDegree_le [Nontrivial R]
+    {P : MvPolynomial σ (Polynomial R)} {h : ℕ}
+    (hP : CoeffNatDegreeLE P h) :
+    ((optionEquivRight R σ).symm P).weightedTotalDegree
+      (fun i : Option σ ↦ i.elim 1 fun _ ↦ 0) ≤ h := by
+  classical
+  have he : (optionEquivRight R σ).symm P =
+      ∑ m ∈ P.support, (optionEquivRight R σ).symm (C (P.coeff m)) *
+        ∏ i ∈ m.support, (X (some i) : MvPolynomial (Option σ) R) ^ m i := by
+    conv_lhs => rw [P.as_sum]
+    simp only [map_sum, monomial_eq, map_mul, Finsupp.prod, map_prod, map_pow,
+      optionEquivRight_symm_X]
+  rw [he]
+  apply weightedTotalDegree_finsetSum_le
+  intro m hm
+  apply (weightedTotalDegree_mul_le _ _ _).trans
+  have hc := (weightedTotalDegree_optionEquivRight_symm_C_le (σ := σ)
+    (P.coeff m)).trans (hP m)
+  have hj := weightedTotalDegree_someX_prod_zero (R := R) m.support m
+  omega
+
+/-- Coefficient-degree and jet-degree bounds give a bidegree bound after flattening. -/
+theorem optionEquivRight_symm_mem_restrictBidegree [Nontrivial R]
+    {P : MvPolynomial σ (Polynomial R)} {a b : ℕ}
+    (ha : CoeffNatDegreeLE P a) (hb : P.totalDegree ≤ b) :
+    (optionEquivRight R σ).symm P ∈ restrictBidegree σ R a b := by
+  rw [mem_restrictBidegree_iff_weightedTotalDegree_le]
+  constructor
+  · exact weightedTotalDegree_optionEquivRight_symm_coefficientDegree_le ha
+  · calc
+      _ = P.totalDegree := by
+        simpa only [AlgEquiv.apply_symm_apply] using
+          (totalDegree_optionEquivRight ((optionEquivRight R σ).symm P)).symm
+      _ ≤ b := hb
+
+/-! ### Joint total degree -/
+
+section CommRing
+
+variable {A : Type*} [CommRing A]
+
+end CommRing
+
+end
+
+end MvPolynomial

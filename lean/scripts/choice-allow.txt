@@ -1,0 +1,8 @@
+# choice-allow.txt: steps that the audit's walk for Classical.choice does not take. One entry on a
+# line, in this form:
+#   A > B reason
+# From the constant A the walk does not step to B; from anywhere else it does. The reason is not
+# optional; an entry that stops nothing fails the check; the entries used are printed.
+# An entry is as narrow as A is: A should be a constant with one job, and should take no
+# proposition or type as an argument. For example, "dec > Classical.propDecidable" with "def dec
+# (p) : Decidable p := Classical.propDecidable p" would allow everything.

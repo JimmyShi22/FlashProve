@@ -1,0 +1,8 @@
+
+Beside this file lie the frame, the style sheet and the script (page_template.html, page.css, page.js) from which
+scripts/make_statements_html.py makes the page lean/STATEMENTS.html, and turns.txt.
+Adapted, with changes, from succinctlabs/veil-formal-verification; Apache-2.0.
+turns.txt names the twelve lines of the script that are replaced when the page is made, and says why. The markup of the
+page's body follows the frame: its elements, their order and their class names, which the style sheet and the script
+expect. Section 7 of scripts/make_statements_html.py and the part on the front page of
+scripts/check_statements_html.py write these strings.

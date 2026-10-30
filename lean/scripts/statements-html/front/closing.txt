@@ -1,0 +1,3 @@
+- Third-party material in the Lean files that this page prints: lean/CREDITS.md. The HTML template, style sheet and script of this page: lean/scripts/statements-html/shell/ORIGIN.txt.
+
+

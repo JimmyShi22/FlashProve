@@ -1,0 +1,82 @@
+# scan-exceptions.txt: lines that check.py's step "words" lets through.
+# Three fields, separated by tabs: the path from lean/, the line's exact text, the reason. One
+# entry lets through one line. An entry that lets nothing through fails the step.
+# An entry covers the search in the raw text only: a word that the search with comments blanked
+# still finds is rejected. An entry whose reason begins with "CODE: " covers both searches. See
+# scripts/RULES.txt, "Every word is searched twice".
+# check.py holds this file's sha256 (LIST_SUM); the step fails if they differ. Before that sum is
+# updated, every line that is new in this file must be read.
+OnBytes/Guard/Cmd.lean	constant carries a mark: a rule for the compiler (csimp), implemented_by, extern, opaque, unsafe or	A comment names the word csimp (rejected in check.py).
+OnBytes/Guard/Cmd.lean	 1  #guard_csimp (Csimp.lean): every compiler rule on record is a theorem that depends only on the	A comment names the word csimp (rejected in check.py).
+OnBytes/Guard/Cmd.lean	    -- structural-recursion elaborator made it (its record: Lean.Elab.Structural.eqnInfoExt): such a	A comment names the word eqnInfoExt (rejected in check.py).
+OnBytes/Guard/Cmd.lean	    let onRecord := fun (c : Name) => (Lean.Elab.Structural.eqnInfoExt.find? env c).isSome	CODE: A guard command reads this record of Lean's (find?) to reject a constant; it adds no entry to it.
+OnBytes/Guard/Cmd.lean	/-- g ↦ the constants in whose place implemented_by (the stand-in mark, with no equation) puts g -/	A comment names the word implemented_by (rejected in check.py).
+OnBytes/Guard/Cmd.lean	mark, or stands in for another by implemented_by or by a rule, or is neither Lean core's nor in the	A comment names the word implemented_by (rejected in check.py).
+OnBytes/Guard/Cone.lean	* implemented_by g: the compiler calls g in its place;	A comment names the word implemented_by (rejected in check.py).
+OnBytes/Guard/Cone.lean	* extern: the compiler calls a C function;	A comment names the word extern (rejected in check.py).
+OnBytes/Guard/Cone.lean	* opaque: the constant has a value, but the kernel never unfolds it, so no theorem can use the	A comment names the word opaque (rejected in check.py).
+OnBytes/Guard/Cone.lean	  value. A function written with the keyword partial reaches the kernel as an opaque constant, and	A comment names the word opaque (rejected in check.py).
+OnBytes/Guard/Cone.lean	  so does a constant that is set by initialize;	A comment names the word initialize (rejected in check.py).
+OnBytes/Guard/Cone.lean	* unsafe, or of the kernel's safety class partial: no theorem can speak of it;	A comment names the word unsafe (rejected in check.py).
+OnBytes/Guard/Cone.lean	Lean's core uses extern and implemented_by for numbers, arrays, byte arrays and strings, so no	A comment names the word extern (rejected in check.py).
+OnBytes/Guard/Cone.lean	How it walks. From a definition, and from an opaque constant, it goes on to every constant in the	A comment names the word opaque (rejected in check.py).
+OnBytes/Guard/Cone.lean	is implemented_by g, it goes on to g. It does not enter the value of a constant that is extern or	A comment names the word extern (rejected in check.py).
+OnBytes/Guard/Cone.lean	implemented_by, because that value is not compiled.	A comment names the word implemented_by (rejected in check.py).
+OnBytes/Guard/Cone.lean	* What the C code behind an extern calls in its turn: the environment does not show it. What a	A comment names the word extern (rejected in check.py).
+OnBytes/Guard/Cone.lean	  f._unsafe_rec, and the walk does not follow it. In this library such a constant is rejected unless	A comment names the word _unsafe_rec (rejected in check.py).
+OnBytes/Guard/Cone.lean	    | some g => [s!"implemented_by {g}"]	A string holds the word implemented_by (rejected in check.py).
+OnBytes/Guard/Cone.lean	  (if isExtern env c then ["extern"] else []) ++	A string holds the word extern (rejected in check.py).
+OnBytes/Guard/Cone.lean	    | .opaqueInfo _ => ["opaque"]	A string holds the word opaque (rejected in check.py).
+OnBytes/Guard/Cone.lean	  (if ci.isUnsafe then ["unsafe"] else []) ++	A string holds the word unsafe (rejected in check.py).
+OnBytes/Guard/Cone.lean	    logInfo m!"the cone of {roots}: {count} constants; listed are those that carry implemented_by \	A string holds the word implemented_by (rejected in check.py).
+OnBytes/Guard/Cone.lean	      or extern, or are opaque, \	A string holds the word extern (rejected in check.py).
+OnBytes/Guard/Cone.lean	      an axiom, unsafe or partial\n\	A string holds the word unsafe (rejected in check.py).
+OnBytes/Guard/Core.lean	15  #guard_plain: no constant of this library in a module below the root is an axiom, opaque, unsafe	A comment names the word opaque (rejected in check.py).
+OnBytes/Guard/Core.lean	entry in Lean's records of implemented_by, extern, export, init and csimp. The check reads the term	A comment names the word csimp (rejected in check.py).
+OnBytes/Guard/Core.lean	  if (Compiler.getImplementedBy? env root).isSome then marks := marks.push "implemented_by"	A string holds the word implemented_by (rejected in check.py).
+OnBytes/Guard/Core.lean	  if isExtern env root then marks := marks.push "extern"	A string holds the word extern (rejected in check.py).
+OnBytes/Guard/Core.lean	    implemented_by, extern, export, init, csimp"	A string holds the word csimp (rejected in check.py).
+OnBytes/Guard/Core.lean	/-- The kind of a constant of whose value no theorem can speak: an axiom, opaque, unsafe or of the	A comment names the word opaque (rejected in check.py).
+OnBytes/Guard/Core.lean	  | .opaqueInfo _ => some "opaque"	A string holds the word opaque (rejected in check.py).
+OnBytes/Guard/Core.lean	  | _ => if ci.isUnsafe then some "unsafe" else if ci.isPartial then some "partial" else none	A string holds the word unsafe (rejected in check.py).
+OnBytes/Guard/Core.lean	is in "asOurs": no constant in the module's own list is an axiom, opaque, unsafe or of the class	A comment names the word opaque (rejected in check.py).
+OnBytes/Guard/Core.lean	    {all}; of these helper constants by their last part {part}: {helpers}; axioms, opaque, unsafe \	A string holds the word opaque (rejected in check.py).
+OnBytes/Guard/Core.lean	      the modules below {root}: each is an axiom, opaque, unsafe or partial, so no theorem can \	A string holds the word opaque (rejected in check.py).
+OnBytes/Guard/Core.lean	   "_private.Init.Data.List.Attach.0.List.attachWithImpl", "lcProof", "mixHash", "panicCore",	A string holds the word lcProof (rejected in check.py).
+OnBytes/Guard/Core.lean	   "unsafeCast", "unsafeCast._proof_1"]	A string holds the word unsafeCast (rejected in check.py).
+OnBytes/Guard/Csimp.lean	No proof checker sees compiled code. A rule for the compiler (Lean calls it a csimp lemma) is an	A comment names the word csimp (rejected in check.py).
+OnBytes/Guard/Csimp.lean	equation @f = @g that is marked csimp; in everything that is compiled after it, the compiler uses	A comment names the word csimp (rejected in check.py).
+OnBytes/Guard/Csimp.lean	#guard_csimp list floor goes through every rule that the environment has on record at that place:	A comment names the word csimp (rejected in check.py).
+OnBytes/Guard/Csimp.lean	* Code that stands in for a definition without any equation (implemented_by, extern, partial):	A comment names the word extern (rejected in check.py).
+OnBytes/Guard/Csimp.lean	  let report := m!"rules for the compiler (csimp) on record: {names.size}, of them marked scoped: \	A string holds the word csimp (rejected in check.py).
+OnBytes/Guard/Csimp.lean	    throwError "the guard on rules for the compiler (csimp) \	A string holds the word csimp (rejected in check.py).
+OnBytes/Guard/Csimp.lean	/-- #guard_csimp list floor: fails unless every rule for the compiler on record is a theorem that	A comment names the word csimp (rejected in check.py).
+OnBytes/Guard/Csimp.lean	macro "#guard_csimp " l:term:max n:term:max : command => `(run_cmd OnBytes.Guard.checkCsimp $l $n)	A string holds the word csimp (rejected in check.py).
+OnBytes/Guard/Program.lean	   the marks implemented_by and extern;	A comment names the word extern (rejected in check.py).
+OnBytes/Guard/Program.lean	 * a constant of this library in a module below the root is an axiom, opaque, unsafe or partial, and	A comment names the word opaque (rejected in check.py).
+OnBytes/Guard/Program.lean	#guard_csimp [] 0  -- command 1	CODE: The guards' own command #guard_csimp, whose name ends in the letters csimp. It reads the compiler's rules on record and rejects; it sets none.
+OnBytes/Guard/Program.lean	#guard_twins "_unsafe_rec" "partial" 1  -- command 8	A string holds the word _unsafe_rec (rejected in check.py).
+OnBytes/Guard/Program.lean	#guard_plain `OnBytes.Main "_unsafe_rec" []  -- command 15	A string holds the word _unsafe_rec (rejected in check.py).
+OnBytes/Guard/Test.lean	a constant of this library that is extern, opaque, an axiom, unsafe or partial (only implemented_by	A comment names the word extern (rejected in check.py).
+OnBytes/Guard/Test.lean	7: the marks extern, export, init and a rule. Of command 8: a companion of the real name part with a	A comment names the word extern (rejected in check.py).
+OnBytes/Guard/Test.lean	run_cmd mustPass (checkTwins "_unsafe_rec" "partial" 1)	A string holds the word _unsafe_rec (rejected in check.py).
+OnBytes/Guard/Test.lean	-- an unsafe axiom counts as an axiom, an unsafe opaque constant as opaque	A comment names the word opaque (rejected in check.py).
+OnBytes/Guard/Test.lean	  for (c, k) in [(``propext, some "an axiom"), (``IO.getStdout, some "opaque"),	A string holds the word opaque (rejected in check.py).
+OnBytes/Guard/Test.lean	      (``unsafeCast, some "unsafe"), (``lcProof, some "an axiom"),	CODE: A test of the guards names constants of Lean's own (unsafeCast, lcProof) as examples of the kinds that a guard command rejects. The names are looked up in the environment; nothing calls them.
+OnBytes/Guard/Test.lean	      (``ptrAddrUnsafe, some "opaque"), (``Nat.add, none), (``Nat.add_comm, none)] do	A string holds the word opaque (rejected in check.py).
+OnBytes/Guard/Test.lean	  let got := oddKind (← recordOf (.str ``placesOf "_unsafe_rec"))	A string holds the word _unsafe_rec (rejected in check.py).
+OnBytes/Guard/Test.lean	      (``unsafeCast, "unsafeCast", false), (``Nat.add, "add", false),	CODE: A test of the guards names constants of Lean's own (unsafeCast, lcProof) as examples of the kinds that a guard command rejects. The names are looked up in the environment; nothing calls them.
+OnBytes/Guard/Test.lean	      (.str ``placesOf "_unsafe_rec", "_unsafe_rec", true),	A string holds the word _unsafe_rec (rejected in check.py).
+OnBytes/Guard/Test.lean	      (.str ``placesOf "_unsafe_rec", "_other", false)] do	A string holds the word _unsafe_rec (rejected in check.py).
+OnBytes/Guard/Test.lean	-- Lean's own first module, counted as this library's for one call, has axioms and opaque constants	A comment names the word opaque (rejected in check.py).
+OnBytes/Guard/Test.lean	run_cmd mustRefuse "each is an axiom, opaque, unsafe or partial"	A string holds the word opaque (rejected in check.py).
+OnBytes/Guard/Test.lean	          (checkPlain `Init.Prelude "_unsafe_rec" [`Init])	A string holds the word _unsafe_rec (rejected in check.py).
+OnBytes/Guard/Test.lean	run_cmd mustRefuse "a check of nothing" (checkPlain `Init.Prelude "_unsafe_rec" [])	A string holds the word _unsafe_rec (rejected in check.py).
+OnBytes/Guard/Test.lean	run_cmd mustPass (checkPlain `OnBytes.Guard.Core "_unsafe_rec" [])	A string holds the word _unsafe_rec (rejected in check.py).
+OnBytes/Guard/Test.lean	run_cmd mustRefuse "_unsafe_rec: partial, in OnBytes.Guard"	A string holds the word _unsafe_rec (rejected in check.py).
+OnBytes/Guard/Test.lean	          (checkPlain `No.Such.Module "_unsafe_rec" [])	A string holds the word _unsafe_rec (rejected in check.py).
+Run/Blake2b/LoadThm.lean	local notation:max "pblock(" a ", " b ")" => (#[a, b, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,	CODE: A notation that is local to this file. The sha256 of the whole file stands in GUARD_SUMS in check.py, so it cannot change unseen.
+Run/Blake2b/Spec.lean	/-- The macro `G`. The macro reads `m` and changes entries of `v` in place; here `m` and `v` are	A comment names the word macro (rejected in check.py).
+Run/Blake2b/Spec.lean	/-- The macro `ROUND`, with `m` and `v` as arguments and the new `v` as the result. -/	A comment names the word macro (rejected in check.py).
+OnBytes/Guard/Core.lean	lcProof, unsafeCast and the names with Unsafe belong to the fast forms in which Lean's core compiles	A comment names the word lcProof (rejected in check.py).
+Johnson/Desc/Laid/ProofAsks.lean	scripts/check.py rejects implemented_by, extern, csimp and initializers anywhere in the library, no	A comment names the words implemented_by, extern and csimp (rejected in check.py).

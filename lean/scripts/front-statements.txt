@@ -1,0 +1,1992 @@
+# front-statements.txt: the compiled statements of the theorems at the front of the library, and
+# behind them of 124 further theorems, as the audit prints them in its listing: without notations,
+# implicit arguments hidden. A block: "=== " and the full name; "in full: " and the sha256 of the
+# same statement printed with all implicit and instance arguments; the statement. scripts/check.py
+# compares each with what its own run's audit prints, to the letter; see scripts/RULES.txt. check.py
+# holds this file's sha256 (STATEMENTS_SUM). Only the statement is compared; the definitions that it
+# names are not. The lines are as Lean breaks them: do not wrap them anew.
+=== VerifiableInference.rejectAll_sound
+in full: 31ba0ebfa850c4e2fcfdd4ee103fbd5ba719bd939752ef2af656a33533da59c7
+VerifiableInference.Sound VerifiableInference.rejectAll fun x => 0
+=== VerifiableInference.validSettings_two
+in full: 04cc7a82ef165bf1061ed6454da15a57563bd1d5b99704fb8bb6efb609bc4ee9
+Exists fun first => Exists fun second => Ne first second
+=== VerifiableInference.validSettings_exist
+in full: 98b40d04d93d44d5eae45d4ae7b26eb2c98037da5ea1e54145200ecc7ddcffba
+Nonempty VerifiableInference.ValidSettings
+=== VerifiableInference.canServe_atVotingWeights
+in full: 5a5712e2dc66bcf698540035044351204f2950f67d2604f4f9f0486de64eccd9
+∀ (settings : IntegerTransformer.Settings) (valid : Eq (VerifiableInference.settingsAreValid settings) Bool.true)
+  (σ τ : Nat → Nat),
+  (∀ (t : Nat), instLTNat.lt (σ t) 5120) →
+    (∀ (j : Nat), instLTNat.lt (τ j) 202048) →
+      ∀ (a : Nat),
+        instLTNat.lt a 202048 →
+          VerifiableInference.CanServe settings (VerifiableInference.weightsOfIndex valid (Cm.biteI σ τ))
+            (List.cons a List.nil) (List.cons (τ (σ a)) List.nil)
+=== VerifiableInference.canServe_atAttentionWeights
+in full: 6223824f025a12b1931c681b1c7553069384413f0ea206d8298ad4bc89f58a2b
+And
+  (VerifiableInference.CanServe VerifiableInference.referenceSettings VerifiableInference.attentionWeights
+    (instHAppendOfAppend.hAppend (List.replicate 1023 0) (List.cons 1 List.nil)) (List.cons 7 List.nil))
+  (Eq
+    (VerifiableInference.modelNextToken VerifiableInference.referenceSettings VerifiableInference.attentionWeights
+      (instHAppendOfAppend.hAppend (List.replicate 1023 0) (List.cons 1 List.nil)))
+    (Option.some 7))
+=== VerifiableInference.canServe_nowhere_atHaltingWeights
+in full: a3a3e05e6c8d7fd4efacd0bfb78f5a6166f2f6761370445713c796c058a515c2
+∀ (prompt output : List VerifiableInference.Token),
+  Not
+    (VerifiableInference.CanServe VerifiableInference.referenceSettings VerifiableInference.haltingWeights prompt
+      output)
+=== VerifiableInference.soundForWith_ofArgument
+in full: 757453363e347e21b399d1280f0a97d426a62d0d8eb823c1b9f31e0dd764469a
+∀ {I Pf : Type} {bound : Nat}
+  (A :
+    ZKCP.Arg 256 I (Prod (List VerifiableInference.Token) (List VerifiableInference.Token)) Unit (ZKCP.Digest 256)
+      (Prod I (Fin (instHAdd.hAdd bound 1))) Pf)
+  (commit : I → Fin (instHAdd.hAdd bound 1) → ZKCP.OComp 256 (ZKCP.Digest 256))
+  (nextToken : I → List VerifiableInference.Token → Option VerifiableInference.Token),
+  (∀ (key : ZKCP.Digest 256) (x : Prod (List VerifiableInference.Token) (List VerifiableInference.Token)) (proof : Pf),
+      (A.V key x proof).DrawsNoCoin) →
+    ∀ (claim : I → List VerifiableInference.Token → List VerifiableInference.Token → Prop)
+      (E :
+        ZKCP.Extractor 256 I (Prod (List VerifiableInference.Token) (List VerifiableInference.Token)) Unit
+          (ZKCP.Digest 256) Pf)
+      (ε₂ : Nat → Nat → ENNReal) (ε : Nat → ENNReal),
+      ZKCP.HasIndexBindingWith (ZKCP.languageRelation fun i x => claim i x.fst x.snd) A E ε₂ →
+        (∀ (tC tP : Nat), ENNReal.instPartialOrder.le (ε₂ tC tP) (ε (instHAdd.hAdd tC tP))) →
+          VerifiableInference.SoundForWith (VerifiableInference.ArgumentSystem.ofArgument A commit nextToken) E.Ei claim
+            ε
+=== IntegerModel.requestOf_some
+in full: 7c66d3bccb328148e1bf955e2e98bf2f7565a7da26fc071b3e1380b39404e43c
+∀ {prompt output padding : List IntegerModel.Token} {x : IntegerModel.Request},
+  Eq (IntegerModel.requestOf prompt output padding) (Option.some x) →
+    And
+      (And (instLTNat.lt 0 prompt.length)
+        (And (instLTNat.lt 0 output.length)
+          (instLENat.le (instHAdd.hAdd prompt.length output.length) (instHAdd.hAdd Inst.Model.ppref.T 1))))
+      (And (Eq (Inst.Model.Instance.r x) (instHSub.hSub prompt.length 1))
+        (And (Eq (Inst.Model.Instance.e x) (instHAdd.hAdd (instHSub.hSub prompt.length 1) output.length))
+          (∀ (j : Nat),
+            instLTNat.lt j (instHAdd.hAdd prompt.length output.length) →
+              Eq (Inst.Model.Instance.tok x j)
+                ((instHAppendOfAppend.hAppend prompt output).getD j IntegerModel.tokenZero).val)))
+=== VerifiableInference.requestOfTokens_some
+in full: bff2da3cd24cb20bd494a00decc59307004a5090e064f8d528eebd73ce6339b2
+∀ {x : Prod (List VerifiableInference.Token) (List VerifiableInference.Token)}
+  {padding : List VerifiableInference.Token} {r : IntegerModel.Request},
+  Eq (VerifiableInference.requestOfTokens x padding) (Option.some r) →
+    Exists fun prompt =>
+      Exists fun output =>
+        Exists fun pad =>
+          And (Eq (VerifiableInference.vocabularyTokens x.fst) (Option.some prompt))
+            (And (Eq (VerifiableInference.vocabularyTokens x.snd) (Option.some output))
+              (And (Eq (VerifiableInference.vocabularyTokens padding) (Option.some pad))
+                (Eq (IntegerModel.requestOf prompt output pad) (Option.some r))))
+=== VerifiableInference.canServe_exists
+in full: 0ce4c09611ecc7338ccfe9bd66d6d7702a2f0e001089fe8a99b5ec80328fbbba
+∀ (settings : IntegerTransformer.Settings),
+  Eq (VerifiableInference.settingsAreValid settings) Bool.true →
+    Exists fun weights =>
+      Exists fun prompt =>
+        Exists fun output =>
+          And (VerifiableInference.CanServe settings weights prompt output)
+            (∀ (position : Nat) (h : instLTNat.lt position output.length),
+              Eq
+                (VerifiableInference.modelNextToken settings weights
+                  (instHAppendOfAppend.hAppend prompt (List.take position output)))
+                (Option.some (List.instGetElemNatLtLength.getElem output position h)))
+=== VerifiableInference.rejectAll_soundAndBinding
+in full: 8e57b6f40076b320c83f6ea5987a8a6cd7d455b2790f306a72b1a1ce7120bf49
+VerifiableInference.SoundAndBinding VerifiableInference.rejectAll fun x => 0
+=== VerifiableInference.notModelOutput_exists
+in full: 486937ce7a091b3d6225247ad81d76480c5f904c83e163cf4b1c846d47d75105
+∀ (system : VerifiableInference.ArgumentSystem) (weights : system.Weights),
+  Exists fun prompt => Exists fun output => And (Ne output List.nil) (Not (system.IsModelOutput weights prompt output))
+=== VerifiableInference.modelNextToken_answers_one
+in full: 3ecec00375ec9fce29415caa4ace7fbe448e18981c91d85fde08cc66227cff1e
+∀ (settings : IntegerTransformer.Settings),
+  Eq (VerifiableInference.settingsAreValid settings) Bool.true →
+    Exists fun weights =>
+      Eq (VerifiableInference.modelNextToken settings weights (List.cons 0 List.nil)) (Option.some 1)
+=== VerifiableInference.modelNextToken_reads_weights
+in full: 1dd76d2305617035b6e76771434f194f7f02ed8014c66e78c8dba44e526cfdc4
+∀ (settings : IntegerTransformer.Settings),
+  Eq (VerifiableInference.settingsAreValid settings) Bool.true →
+    Exists fun first =>
+      Exists fun second =>
+        Ne (VerifiableInference.modelNextToken settings first (List.cons 0 List.nil))
+          (VerifiableInference.modelNextToken settings second (List.cons 0 List.nil))
+=== VerifiableInference.modelNextToken_reads_prompt
+in full: ebb31980219f93438b236f9d2ca4b8508d7852d26d0da800fad46587b8e38077
+∀ (settings : IntegerTransformer.Settings),
+  Eq (VerifiableInference.settingsAreValid settings) Bool.true →
+    Exists fun weights =>
+      Ne (VerifiableInference.modelNextToken settings weights (List.cons 0 List.nil))
+        (VerifiableInference.modelNextToken settings weights (List.cons 1 List.nil))
+=== VerifiableInference.twoModels_serve_one_request_alike
+in full: f591fd77c7729bf1d56d09cb657dfcf701ed31d688ae07d6dafe5198d56a6947
+∀ (settings : IntegerTransformer.Settings),
+  Eq (VerifiableInference.settingsAreValid settings) Bool.true →
+    Exists fun first =>
+      Exists fun second =>
+        And (VerifiableInference.CanServe settings first (List.cons 0 List.nil) (List.cons 1 List.nil))
+          (And (VerifiableInference.CanServe settings second (List.cons 0 List.nil) (List.cons 1 List.nil))
+            (And (Eq (VerifiableInference.modelNextToken settings first (List.cons 0 List.nil)) (Option.some 1))
+              (And (Eq (VerifiableInference.modelNextToken settings second (List.cons 0 List.nil)) (Option.some 1))
+                (Ne (VerifiableInference.modelNextToken settings first (List.cons 1 List.nil))
+                  (VerifiableInference.modelNextToken settings second (List.cons 1 List.nil))))))
+=== VerifiableInference.modelNextToken_reads_layer
+in full: ca3c16a172964d0bc23c13970c97b16399a66ade884ecee0c664ba8c92ef8c56
+And (Eq Inst.Model.SanityAtt.wA.Emb Inst.Model.SanityAtt.wZ.Emb)
+  (And (Eq Inst.Model.SanityAtt.wA.H Inst.Model.SanityAtt.wZ.H)
+    (And (∀ (L : Nat), Ne L 0 → Eq (Inst.Model.SanityAtt.wA.layer L) (Inst.Model.SanityAtt.wZ.layer L))
+      (And
+        (Eq
+          (VerifiableInference.modelNextToken VerifiableInference.referenceSettings VerifiableInference.attentionWeights
+            (instHAppendOfAppend.hAppend (List.replicate 1023 0) (List.cons 1 List.nil)))
+          (Option.some 7))
+        (Eq
+          (VerifiableInference.modelNextToken VerifiableInference.referenceSettings VerifiableInference.zeroLayerWeights
+            (instHAppendOfAppend.hAppend (List.replicate 1023 0) (List.cons 1 List.nil)))
+          (Option.some 0)))))
+=== VerifiableInference.modelNextToken_reads_earlier_token
+in full: 91b22632619fcfeda05dfb4e75a723aad7da931f5d2f11cb7a4487cdda618c84
+And
+  (Eq
+    (VerifiableInference.modelNextToken VerifiableInference.referenceSettings VerifiableInference.attentionWeights
+      (instHAppendOfAppend.hAppend (List.replicate 1023 0) (List.cons 1 List.nil)))
+    (Option.some 7))
+  (Eq
+    (VerifiableInference.modelNextToken VerifiableInference.referenceSettings VerifiableInference.attentionWeights
+      (List.replicate 1024 1))
+    (Option.some 0))
+=== VerifiableInference.tokensOfRequest_requestOfTokens
+in full: 44389cf7646689c85ca6b5bd82bc49cdf913a9b2e875d8b1b515145c892a7a4a
+∀ {x : Prod (List VerifiableInference.Token) (List VerifiableInference.Token)}
+  {padding : List VerifiableInference.Token} {r : IntegerModel.Request},
+  Eq (VerifiableInference.requestOfTokens x padding) (Option.some r) → Eq (VerifiableInference.tokensOfRequest r) x
+=== VerifiableInference.SoundForWith.mapWeights
+in full: 40fee730dbcfa6f98a9a3e0343723152c3a472fce128a2abd95fede6d0caa236
+∀ (system : VerifiableInference.ArgumentSystem)
+  (extractor : VerifiableInference.Commitment → VerifiableInference.QueryLog → Option system.Weights)
+  (claim : system.Weights → List VerifiableInference.Token → List VerifiableInference.Token → Prop) (ε : Nat → ENNReal),
+  VerifiableInference.SoundForWith system extractor claim ε →
+    ∀ (NewWeights NewPublicParameters : Type) (publicParameters : NewWeights → NewPublicParameters)
+      (nextToken : NewWeights → List VerifiableInference.Token → Option VerifiableInference.Token)
+      (commit :
+        NewWeights →
+          system.CommitmentRandomness → VerifiableInference.DeterministicAlgorithm VerifiableInference.Commitment)
+      (prove :
+        NewWeights →
+          system.CommitmentRandomness →
+            List VerifiableInference.Token →
+              List VerifiableInference.Token → VerifiableInference.RandomizedAlgorithm system.Proof)
+      (map : system.Weights → NewWeights)
+      (newClaim : NewWeights → List VerifiableInference.Token → List VerifiableInference.Token → Prop),
+      (∀ (weights : system.Weights) (prompt output : List VerifiableInference.Token),
+          claim weights prompt output → newClaim (map weights) prompt output) →
+        VerifiableInference.SoundForWith
+          (system.withWeights NewWeights NewPublicParameters publicParameters nextToken commit prove)
+          (fun commitment queryLog => Option.map map (extractor commitment queryLog)) newClaim ε
+=== VerifiableInference.soundForWith_of_indexBindingWith
+in full: 6ed39462d7bff8dcba6a0d7554bb85f503ef66063da31f0bed95419ef6e48bcf
+∀ (system : VerifiableInference.ArgumentSystem) {PP : Type}
+  (R :
+    ZKCP.IndexedRelation system.Weights (Prod (List VerifiableInference.Token) (List VerifiableInference.Token)) Unit
+      PP)
+  (claim : system.Weights → List VerifiableInference.Token → List VerifiableInference.Token → Prop),
+  (∀ (weights : system.Weights) (x : Prod (List VerifiableInference.Token) (List VerifiableInference.Token)),
+      R.rel weights x Unit.unit → claim weights x.fst x.snd) →
+    ∀
+      (E :
+        ZKCP.Extractor 256 system.Weights (Prod (List VerifiableInference.Token) (List VerifiableInference.Token)) Unit
+          VerifiableInference.Commitment system.Proof)
+      (ε₂ : Nat → Nat → ENNReal) (ε : Nat → ENNReal),
+      ZKCP.HasIndexBindingWith R system.uploadArgument E ε₂ →
+        (∀ (tC tP : Nat), ENNReal.instPartialOrder.le (ε₂ tC tP) (ε (instHAdd.hAdd tC tP))) →
+          VerifiableInference.SoundForWith system E.Ei claim ε
+=== VerifiableInference.ArgumentSystem.uploadArgument_ofArgument_V
+in full: 9fc869cf96793d90ee626c4ea11764ff50886fc95fd7f198aa08a72323641203
+∀ {I Pf : Type} {bound : Nat}
+  (A :
+    ZKCP.Arg 256 I (Prod (List VerifiableInference.Token) (List VerifiableInference.Token)) Unit (ZKCP.Digest 256)
+      (Prod I (Fin (instHAdd.hAdd bound 1))) Pf)
+  (commit : I → Fin (instHAdd.hAdd bound 1) → ZKCP.OComp 256 (ZKCP.Digest 256))
+  (nextToken : I → List VerifiableInference.Token → Option VerifiableInference.Token),
+  (∀ (key : ZKCP.Digest 256) (x : Prod (List VerifiableInference.Token) (List VerifiableInference.Token)) (proof : Pf),
+      (A.V key x proof).DrawsNoCoin) →
+    Eq (VerifiableInference.ArgumentSystem.ofArgument A commit nextToken).uploadArgument.V A.V
+=== VerifiableInference.Prob_univ
+in full: 1818dc4084920eab2e8b16c111130e207eeee494e62c801b4ceb6eb8af762e35
+∀ {α : Type} (experiment : VerifiableInference.RandomizedAlgorithm α),
+  Eq (VerifiableInference.Prob experiment Set.univ) 1
+=== VerifiableInference.Prob_add_compl
+in full: c94e0f8cfaa39d33ce5b9c99743f0d5cc9586a51e54aaba46cbdc54b3a4c0870
+∀ {α : Type} (experiment : VerifiableInference.RandomizedAlgorithm α) (event : Set α),
+  Eq
+    (instHAdd.hAdd (VerifiableInference.Prob experiment event)
+      (VerifiableInference.Prob experiment (Set.instCompl.compl event)))
+    1
+=== VerifiableInference.canServeModelOutput_atVotingWeights
+in full: 3a2a3589b0e147142fc0c53e5af0f3340a93a49038a627cea1a8c9c94b7b505c
+∀ (s : Cm.Scales),
+  s.Lawful →
+    ∀ (σ τ : Nat → Nat),
+      (∀ (t : Nat), instLTNat.lt (σ t) 5120) →
+        (∀ (j : Nat), instLTNat.lt (τ j) 202048) →
+          ∀ (a : Nat),
+            instLTNat.lt a 202048 →
+              IntegerModel.CanServeModelOutput s (Cm.biteI σ τ).index (List.cons a List.nil)
+                (List.cons (τ (σ a)) List.nil)
+=== VerifiableInference.modelNextToken_atVotingWeights
+in full: edb0a7d27bbb4c3f45c391dd3b0be77594bdbd66ec3a5ac86a5ab4a93729b987
+∀ (settings : IntegerTransformer.Settings) (valid : Eq (VerifiableInference.settingsAreValid settings) Bool.true)
+  (σ τ : Nat → Nat),
+  (∀ (t : Nat), instLTNat.lt (σ t) 5120) →
+    (∀ (j : Nat), instLTNat.lt (τ j) 202048) →
+      ∀ (a : Nat),
+        instLTNat.lt a 202048 →
+          Eq
+            (VerifiableInference.modelNextToken settings (VerifiableInference.weightsOfIndex valid (Cm.biteI σ τ))
+              (List.cons a List.nil))
+            (Option.some (τ (σ a)))
+=== VerifiableInference.requestOf_ofFn
+in full: a788b659a0461b4ca75003762ffc7fc3d875bbeefb2189d574b8185faf5cd056
+∀ (window : Fin Inst.Model.ppref.T → Fin Inst.Model.ppref.V) (y : Fin Inst.Model.ppref.V),
+  Eq (IntegerModel.requestOf (List.ofFn window) (List.cons y List.nil) List.nil)
+    (Option.some (Inst.Model.Instance.nextOf window y))
+=== VerifiableInference.requestOfTokens_map_val
+in full: 3d51cab031afd3dfcebeb2d5e25d4805fd3618f7ef3bb7945cc86d3cbbe27713
+∀ (prompt output : List IntegerModel.Token),
+  Eq (VerifiableInference.requestOfTokens { fst := List.map Fin.val prompt, snd := List.map Fin.val output } List.nil)
+    (IntegerModel.requestOf prompt output List.nil)
+=== VerifiableInference.referenceSettings_valid
+in full: 4f1066d1be683ac0ba9da6ac003e461592a7e68d19f1c19f409304ec18998fa3
+Eq (VerifiableInference.settingsAreValid VerifiableInference.referenceSettings) Bool.true
+=== VerifiableInference.modelNextToken_atReferenceSettings
+in full: b64e95a49acbd40573cbd1160c8c1bc2f1a3b03e3ef2360df6d2d0acae7a3546
+∀ (tensors : Inst.Model.Index Inst.Model.ppref) (window : Fin Inst.Model.ppref.T → Fin Inst.Model.ppref.V)
+  (y : Fin Inst.Model.ppref.V),
+  Inst.Model.ModelIs Inst.Model.ppref Inst.Model.tbRef tensors.val window y.val →
+    Eq
+      (VerifiableInference.modelNextToken VerifiableInference.referenceSettings
+        (VerifiableInference.weightsOfIndex VerifiableInference.referenceSettings_valid (Cm.Idx.ofIndex tensors))
+        (List.map Fin.val (List.ofFn window)))
+      (Option.some y.val)
+=== VerifiableInference.canServe_atReferenceSettings
+in full: 4d9ef7e81c1eadb400ad5ed3a230d0d1df8d27637b88345ef6274828bb23fb61
+∀ (tensors : Inst.Model.Index Inst.Model.ppref) (window : Fin Inst.Model.ppref.T → Fin Inst.Model.ppref.V)
+  (y : Fin Inst.Model.ppref.V),
+  Inst.Model.ModelIs Inst.Model.ppref Inst.Model.tbRef tensors.val window y.val →
+    VerifiableInference.CanServe VerifiableInference.referenceSettings
+      (VerifiableInference.weightsOfIndex VerifiableInference.referenceSettings_valid (Cm.Idx.ofIndex tensors))
+      (List.map Fin.val (List.ofFn window)) (List.cons y.val List.nil)
+=== VerifiableInference.tokens_zerosThenOne
+in full: 188dae6bce5dcc145815e3cfa84f65b773fc419a4491a31e2fbc746b5232b512
+Eq (List.map Fin.val (List.ofFn Inst.Model.SanityAtt.pA))
+  (instHAppendOfAppend.hAppend (List.replicate 1023 0) (List.cons 1 List.nil))
+=== VerifiableInference.tokens_allOnes
+in full: 16f6d254dad77b94fd2cd65239ef3c7149dc57f560d8bbbfb19e51e589cc7aff
+Eq (List.map Fin.val (List.ofFn Inst.Model.SanityAtt.pB)) (List.replicate 1024 1)
+=== VerifiableInference.windowOf_of_length
+in full: 1baca5f83c0126fde9b38850197bb74433868423d4def7fe2d989fc70d871486
+∀ (window : List IntegerModel.Token) (y : IntegerModel.Token),
+  Eq window.length 1024 → Eq (IntegerModel.windowOf window (List.cons y List.nil)) window
+=== VerifiableInference.exists_isTrueRequest_of_canServeAtIndex
+in full: e3ee8cc5a425c3d11ed91a15eab769b528117a08d49d124c75845afe6cf6f63e
+∀ (s : Cm.Scales),
+  s.Lawful →
+    ∀ (i : Cm.Idx) {prompt output : List Nat},
+      IntegerModel.CanServeAtIndex s i.index prompt output → Exists fun x => Cm.PaperTrue s.kap s.nf i x
+=== VerifiableInference.CompleteSoundZeroKnowledgeOn.toCompleteSoundZeroKnowledge
+in full: fd743fcb7a2c80ed8f7eb892c3cc5655d270d4fcadcae9caeb6ab41eac5916d2
+∀ {system : VerifiableInference.ArgumentSystem} {α : ENNReal} {ε : Nat → ENNReal} {ζ : Nat → Nat → ENNReal},
+  VerifiableInference.CompleteSoundZeroKnowledgeOn system (fun x x_1 x_2 => True) α ε ζ →
+    VerifiableInference.CompleteSoundZeroKnowledge system α ε ζ
+=== VerifiableInference.uniformHash_univ
+in full: a626a6b8fb542041878d92b7d1fa5c92841bcfe10e1b2ef3ee2f61e9a2783a90
+Eq (MeasureTheory.Measure.instFunLike.coe VerifiableInference.uniformHash Set.univ) 1
+=== VerifiableInference.eventProbability_univ
+in full: 9f09a0023e080cc95a1991b4db6afe2216ab6f47954c03731205e9c8e30b6378
+∀ {α : Type} (distribution : PMF α), Eq (VerifiableInference.eventProbability distribution Set.univ) 1
+=== VerifiableInference.eventProbability_add_compl
+in full: d150112a3be545ed2c1e80cd748d7a4a1b57966f36e6f15393e953e3846f4cef
+∀ {α : Type} (distribution : PMF α) (event : Set α),
+  Eq
+    (instHAdd.hAdd (VerifiableInference.eventProbability distribution event)
+      (VerifiableInference.eventProbability distribution (Set.instCompl.compl event)))
+    1
+=== VerifiableInference.Prob_le_one
+in full: aa9c7c8513aa3742d04740a7aedaaeb398968066d9c54af41748da9086fc3349
+∀ {α : Type} (experiment : VerifiableInference.RandomizedAlgorithm α) (event : Set α),
+  ENNReal.instPartialOrder.le (VerifiableInference.Prob experiment event) 1
+=== VerifiableInference.one_sub_le_Prob_compl
+in full: 20fee0797d9d738e5f70ef5d70d5778cb0c8015974daba4ed1605dc27bc6a189
+∀ {α : Type} (experiment : VerifiableInference.RandomizedAlgorithm α) (event : Set α) {ε : ENNReal},
+  ENNReal.instPartialOrder.le (VerifiableInference.Prob experiment event) ε →
+    ENNReal.instPartialOrder.le (instHSub.hSub 1 ε) (VerifiableInference.Prob experiment (Set.instCompl.compl event))
+=== VerifiableInference.Pr_univ
+in full: 1ff5764d2cdb61ae2722e1830829bdd66cdfa549765fff127c5ea533dcfaac97
+∀ {lam : Nat} {α : Type} (computation : ZKCP.OComp lam α), Eq (ZKCP.Pr computation fun x => Set.univ) 1
+=== VerifiableInference.measurable_eventProbability_run
+in full: d597e5dcf579799e289338d19b73c3844fc8d9a7e2922e2bb09d316e31462cb1
+∀ {α : Type} (algorithm : VerifiableInference.RandomizedAlgorithm α) (event : Set α),
+  Measurable fun hash =>
+    VerifiableInference.eventProbability (VerifiableInference.RandomizedAlgorithm.run hash algorithm) event
+=== VerifiableInference.soundOpened_of_soundAndBinding
+in full: 2c19e4ebda691a68a252cc9c7ed88a5391ee001185d1d03444072cc5f80e1af9
+∀ (system : VerifiableInference.ArgumentSystem) (ε : Nat → ENNReal),
+  VerifiableInference.SoundAndBinding system ε →
+    VerifiableInference.SoundOpened system fun queries => instHMul.hMul 2 (ε queries)
+=== VerifiableInference.BindsWith.mapWeights
+in full: fb0c8ce0766a425808465c05ba0aceb08f79aee2089d42d46f284413a4153c33
+∀ (system : VerifiableInference.ArgumentSystem)
+  (extractor : VerifiableInference.Commitment → VerifiableInference.QueryLog → Option system.Weights)
+  (ε : Nat → ENNReal),
+  VerifiableInference.BindsWith system extractor ε →
+    ∀ (NewWeights NewPublicParameters : Type) (publicParameters : NewWeights → NewPublicParameters)
+      (nextToken : NewWeights → List VerifiableInference.Token → Option VerifiableInference.Token)
+      (map : system.Weights → NewWeights) (back : NewWeights → system.Weights),
+      (∀ (weights : NewWeights), Eq (map (back weights)) weights) →
+        VerifiableInference.BindsWith
+          (system.withWeights NewWeights NewPublicParameters publicParameters nextToken
+            (fun weights => system.commit (back weights)) fun weights => system.prove (back weights))
+          (fun commitment queryLog => Option.map map (extractor commitment queryLog)) ε
+=== VerifiableInference.completeNonEmpty_iff_completeOn
+in full: abaa8b5afae94df8bb83db820f2a5e1479a2b06357812cc529042b80e3d99b70
+∀ (system : VerifiableInference.ArgumentSystem) (α : ENNReal),
+  Iff (VerifiableInference.CompleteNonEmpty system α)
+    (VerifiableInference.CompleteOn system (fun x x_1 output => Ne output List.nil) α)
+=== VerifiableInference.zeroKnowledgeOn_of_privacy
+in full: 57f46196a933dcc9968aa5f1d4305d9c12df33379ecd6d6db8dff66c17badaf9
+∀ (system : VerifiableInference.ArgumentSystem)
+  (domain : system.Weights → List VerifiableInference.Token → List VerifiableInference.Token → Prop)
+  (ζ : Nat → Nat → ENNReal)
+  (S :
+    ZKCP.Simulator 256 system.PublicParameters VerifiableInference.Commitment
+      (Prod (List VerifiableInference.Token) (List VerifiableInference.Token)) system.Proof),
+  ZKCP.HasStrongIndexPrivacyWith (system.uploadRelationOn domain) system.uploadArgument S ζ →
+    VerifiableInference.ZeroKnowledgeOn system domain ζ
+=== VerifiableInference.acceptAll_complete
+in full: 0816a85b141ad6fccba7b575fd8a5aa84825caf6b3fc92426f0ebd5bb80ebd8d
+VerifiableInference.Complete VerifiableInference.acceptAll 0
+=== VerifiableInference.BindsWith.atRandomness
+in full: fcf27797a0d059142a0a75a4e3b8c37006ad4b4267de1679d218a07fe58a5a39
+∀ {system : VerifiableInference.ArgumentSystem}
+  {extractor : VerifiableInference.Commitment → VerifiableInference.QueryLog → Option system.Weights}
+  {ε : Nat → ENNReal},
+  VerifiableInference.BindsWith system extractor ε →
+    ∀ (weights : system.Weights) (randomness : system.CommitmentRandomness) (queries : Nat),
+      (system.commit weights randomness).toRandomized.QueryBound queries →
+        ENNReal.instPartialOrder.le
+          (VerifiableInference.Prob (system.commit weights randomness).toRandomized.withQueryLog
+            (setOf fun o => Ne (extractor o.fst o.snd) (Option.some weights)))
+          (ε queries)
+=== VerifiableInference.BindsWith.noTwoOpenings
+in full: 906287d91f9c1b82b6cf7267588c7da2c80a653876d4a7188cb0522346a88a09
+∀ {system : VerifiableInference.ArgumentSystem}
+  {extractor : VerifiableInference.Commitment → VerifiableInference.QueryLog → Option system.Weights}
+  {ε : Nat → ENNReal},
+  VerifiableInference.BindsWith system extractor ε →
+    VerifiableInference.NoTwoOpenings system fun queries => instHMul.hMul 2 (ε queries)
+=== VerifiableInference.CompleteSoundZeroKnowledge.toIsZKCPArg
+in full: 0b03f0217a8bf4606e9cfc6140de3609304e30ae4b53a8aabd9b6d29263f92d7
+∀ {system : VerifiableInference.ArgumentSystem} {α : ENNReal} {ε : Nat → ENNReal} {ζ : Nat → Nat → ENNReal},
+  VerifiableInference.CompleteSoundZeroKnowledge system α ε ζ →
+    ZKCP.IsZKCPArg system.uploadRelation system.uploadArgument α (fun tC tP => ε (instHAdd.hAdd tC tP)) ζ
+=== VerifiableInference.Sound.manyProofs
+in full: e1e4cbb3d24adaf95a0bfc239e4bf3fd684ca68176e0255071477e4155f128ab
+∀ (system : VerifiableInference.ArgumentSystem) (ε : Nat → ENNReal),
+  VerifiableInference.Sound system ε →
+    ∀ (verifierQueries : Nat),
+      (∀ (commitment : VerifiableInference.Commitment) (prompt output : List VerifiableInference.Token)
+          (proof : system.Proof),
+          (system.verify commitment prompt output proof).toRandomized.QueryBound verifierQueries) →
+        VerifiableInference.SoundManyProofs system fun queries proofCount =>
+          ε (instHAdd.hAdd queries (instHMul.hMul proofCount verifierQueries))
+=== VerifiableInference.SoundForWith.soundAfterHonestCommitmentFor
+in full: d059ae04771e21fda7d02e1902baf1d8c34a699fba71ad48c8f9ed27941963dd
+∀ (system : VerifiableInference.ArgumentSystem)
+  (extractor : VerifiableInference.Commitment → VerifiableInference.QueryLog → Option system.Weights)
+  (claim : system.Weights → List VerifiableInference.Token → List VerifiableInference.Token → Prop) (ε : Nat → ENNReal)
+  (α : ENNReal),
+  VerifiableInference.SoundForWith system extractor claim ε →
+    VerifiableInference.ExtractsCommittedWeights system extractor α →
+      VerifiableInference.SoundAfterHonestCommitmentFor system claim fun committerQueries proverQueries =>
+        instHAdd.hAdd (ε (instHAdd.hAdd committerQueries proverQueries)) α
+=== VerifiableInference.bindsWith_ofArgument
+in full: 98ed185a13675467a1689288e92fb39e61ba40c565f88eaf19ab40d61405b4bc
+∀ {I Pf : Type} {bound : Nat}
+  (A :
+    ZKCP.Arg 256 I (Prod (List VerifiableInference.Token) (List VerifiableInference.Token)) Unit (ZKCP.Digest 256)
+      (Prod I (Fin (instHAdd.hAdd bound 1))) Pf)
+  (commit : I → Fin (instHAdd.hAdd bound 1) → ZKCP.OComp 256 (ZKCP.Digest 256))
+  (nextToken : I → List VerifiableInference.Token → Option VerifiableInference.Token) {X₁ W₁ ISK₁ Pf₁ : Type}
+  (A₁ : ZKCP.Arg 256 I X₁ W₁ (ZKCP.Digest 256) ISK₁ Pf₁),
+  (∀ (i : I) (coins : Fin (instHAdd.hAdd bound 1)), Eq (commit i coins) (A₁.commitAt i coins.val)) →
+    ∀ (Ei : VerifiableInference.Commitment → VerifiableInference.QueryLog → Option I) (β : Nat → Nat → ENNReal)
+      (ε : Nat → ENNReal),
+      ZKCP.OpensToExtracted A₁ Ei β →
+        (∀ (tC tO : Nat), ENNReal.instPartialOrder.le (β tC tO) (ε (instHAdd.hAdd tC tO))) →
+          VerifiableInference.BindsWith (VerifiableInference.ArgumentSystem.ofArgument A commit nextToken) Ei ε
+=== VerifiableInference.completeOn_of_completenessError
+in full: 62942d6d0e30288c16f8e9a964a4e5dac771cadd09011600e348a84903430ad5
+∀ (system : VerifiableInference.ArgumentSystem) {PP : Type}
+  (R :
+    ZKCP.IndexedRelation system.Weights (Prod (List VerifiableInference.Token) (List VerifiableInference.Token)) Unit
+      PP)
+  (domain : system.Weights → List VerifiableInference.Token → List VerifiableInference.Token → Prop),
+  (∀ (weights : system.Weights) (prompt output : List VerifiableInference.Token),
+      domain weights prompt output →
+        system.IsModelOutput weights prompt output → R.rel weights { fst := prompt, snd := output } Unit.unit) →
+    ∀ (α : ENNReal),
+      ZKCP.HasCompletenessError R system.uploadArgument α → VerifiableInference.CompleteOn system domain α
+=== VerifiableInference.complete_iff
+in full: 2bf6cb361f71bf2bdaf064921666dc2cacb4c76c8407150b812dc20bc9256f62
+∀ (system : VerifiableInference.ArgumentSystem) (α : ENNReal),
+  Iff (VerifiableInference.Complete system α) (ZKCP.HasCompletenessError system.uploadRelation system.uploadArgument α)
+=== VerifiableInference.extracts_of_extractionError
+in full: 36cf2e3d09cadb0ced79b7de9c8f7a7992c164ffb8ec84d0d577b7b1f7655558
+∀ (system : VerifiableInference.ArgumentSystem)
+  (E :
+    ZKCP.Extractor 256 system.Weights (Prod (List VerifiableInference.Token) (List VerifiableInference.Token)) Unit
+      VerifiableInference.Commitment system.Proof)
+  (δ : ENNReal),
+  ZKCP.HasExtractionError system.uploadArgument E δ → VerifiableInference.ExtractsCommittedWeights system E.Ei δ
+=== VerifiableInference.indexPrivacy_of_zeroKnowledge
+in full: 3e40085d7b4291cf5eaf592c73791185ecc5467bd4df01de0f4cb19e2e16e671
+∀ (system : VerifiableInference.ArgumentSystem) (ζ : Nat → Nat → ENNReal),
+  VerifiableInference.ZeroKnowledge system ζ → ZKCP.HasIndexPrivacy system.uploadRelation system.uploadArgument ζ
+=== VerifiableInference.soundAndBinding_iff
+in full: feefe3b866268e9340c7814514880a2b4b37720f97140acd1c5019409b9f134c
+∀ (system : VerifiableInference.ArgumentSystem) (ε : Nat → ENNReal),
+  Iff (VerifiableInference.SoundAndBinding system ε)
+    (Exists fun extractor =>
+      And (VerifiableInference.SoundForWith system extractor system.IsModelOutput ε)
+        (VerifiableInference.BindsWith system extractor ε))
+=== VerifiableInference.sound_iff
+in full: fee8bafaba958d4110ed8aec0a01d861ed77aff2bee7e9b0fa25a0e8a0bfad32
+∀ (system : VerifiableInference.ArgumentSystem) (ε : Nat → ENNReal),
+  Iff (VerifiableInference.Sound system ε)
+    (ZKCP.HasIndexBinding system.uploadRelation system.uploadArgument fun tC tP => ε (instHAdd.hAdd tC tP))
+=== VerifiableInference.sound_iff_soundFor
+in full: 4be436e4987942ca9f5b22cf294b942e4c4572313c7388009be2911271b2dfbb
+∀ (system : VerifiableInference.ArgumentSystem) (ε : Nat → ENNReal),
+  Iff (VerifiableInference.Sound system ε) (VerifiableInference.SoundFor system system.IsModelOutput ε)
+=== VerifiableInference.zeroKnowledge_iff
+in full: bc099d27e5ebfdaf7512c149f041569bed104859c877128250e1fa0343e88c4b
+∀ (system : VerifiableInference.ArgumentSystem) (ζ : Nat → Nat → ENNReal),
+  Iff (VerifiableInference.ZeroKnowledge system ζ)
+    (Exists fun S => ZKCP.HasStrongIndexPrivacyWith system.uploadRelation system.uploadArgument S ζ)
+=== VerifiableInference.sound_of_soundAndBinding
+in full: 0020ffce4e6c2b874c6fc6ed77a473793920ec82eb442e1b7eec2c0d3c097c49
+∀ (system : VerifiableInference.ArgumentSystem) (ε : Nat → ENNReal),
+  VerifiableInference.SoundAndBinding system ε → VerifiableInference.Sound system ε
+=== VerifiableInference.ArgumentSystem.run_verify
+in full: 6f71909521ffa5046a982e5a262eaf92c7eba78c62e8e2ca1713a1c9310f7092
+∀ (system : VerifiableInference.ArgumentSystem) (hash : VerifiableInference.Hash)
+  (commitment : VerifiableInference.Commitment) (prompt output : List VerifiableInference.Token) (proof : system.Proof),
+  Eq (VerifiableInference.RandomizedAlgorithm.run hash (system.verify commitment prompt output proof).toRandomized)
+    (PMF.pure (system.accepts hash commitment prompt output proof))
+=== VerifiableInference.OnPublicFiles.innerCompiledVerifier_sound
+in full: 8c63acd2018a9670a5be894005556ca2e49e6413803424dd1e6c364d758c6591
+∀ {r : VerifiableInference.OnPublicFiles.InnerCompilerInput}
+  (b : VerifiableInference.OnPublicFiles.SoundnessAnalysisData r),
+  VerifiableInference.OnPublicFiles.CompilerSoundnessConditionsWithMeaning b →
+    VerifiableInference.SoundForWith (VerifiableInference.OnPublicFiles.innerSystem r)
+      (VerifiableInference.OnPublicFiles.compiledIndexExtractor b)
+      (VerifiableInference.OnPublicFiles.innerSystem r).IsModelOutput
+      (VerifiableInference.OnPublicFiles.compiledSoundnessError b)
+=== VerifiableInference.OnPublicFiles.innerCompiledVerifier_soundFor
+in full: 62caf9ba2d4f88f73f0787db0726719b1771b5362458a2c9e35915bd15ea6554
+∀ {r : VerifiableInference.OnPublicFiles.InnerCompilerInput}
+  (b : VerifiableInference.OnPublicFiles.SoundnessAnalysisData r)
+  (claim : r.Index → List VerifiableInference.Token → List VerifiableInference.Token → Prop),
+  VerifiableInference.OnPublicFiles.CompilerSoundnessConditions b →
+    VerifiableInference.OnPublicFiles.CompilerSoundnessConditionStatements.soundFor b claim →
+      VerifiableInference.SoundForWith (VerifiableInference.OnPublicFiles.innerSystem r)
+        (VerifiableInference.OnPublicFiles.compiledIndexExtractor b) claim
+        (VerifiableInference.OnPublicFiles.compiledSoundnessError b)
+=== VerifiableInference.OnPublicFiles.verify_sound
+in full: a309fb89f4e916a4a002e5cd2119ce956c089591805aaebea13873a0eb3de23d
+∀ (d : VerifiableInference.OnPublicFiles.ProtocolDescription),
+  VerifiableInference.OnPublicFiles.Holes d →
+    VerifiableInference.SoundForWith (VerifiableInference.OnPublicFiles.systemOf d)
+      (VerifiableInference.OnPublicFiles.extractorOf d) (VerifiableInference.OnPublicFiles.systemOf d).IsModelOutput
+      (VerifiableInference.OnPublicFiles.soundnessErrorOf d)
+=== VerifiableInference.OnPublicFiles.verify_sound_for
+in full: f30c1f2be2565a04dcc96bc814a68d48254934141c2b45dd42725a07834b587a
+∀ (d : VerifiableInference.OnPublicFiles.ProtocolDescription)
+  (claim : d.C.I → List VerifiableInference.Token → List VerifiableInference.Token → Prop),
+  VerifiableInference.OnPublicFiles.Core d →
+    VerifiableInference.OnPublicFiles.Hole.soundFor d claim →
+      VerifiableInference.SoundForWith (VerifiableInference.OnPublicFiles.systemOf d)
+        (VerifiableInference.OnPublicFiles.extractorOf d) claim (VerifiableInference.OnPublicFiles.soundnessErrorOf d)
+=== VerifiableInference.OnPublicFiles.innerCompiledVerifier_sound_overThreeProtocols
+in full: 38364281955bac0153cb4942cd13c8966afa518928f254626f7a31b2236d3513
+∀ {C : Hiop.ConfigurationWithOutOfDomainSample} {F : OnBytes.Flat.Files C} {P : F.Provers}
+  {T : VerifiableInference.OnPublicFiles.InnerCompilerInputFieldsOverThreeProtocols F P}
+  {U : VerifiableInference.OnPublicFiles.SoundnessAnalysisFieldsOverThreeProtocols F P},
+  VerifiableInference.OnPublicFiles.CompilerSoundnessConditionsOverThreeProtocols F P T U →
+    VerifiableInference.SoundForWith
+      (VerifiableInference.OnPublicFiles.innerSystem
+        (VerifiableInference.OnPublicFiles.innerInputOfThreeProtocols F P T))
+      (VerifiableInference.OnPublicFiles.compiledIndexExtractor
+        (VerifiableInference.OnPublicFiles.soundnessAnalysisDataOfThreeProtocols F P T U))
+      (VerifiableInference.OnPublicFiles.innerSystem
+          (VerifiableInference.OnPublicFiles.innerInputOfThreeProtocols F P T)).IsModelOutput
+      (VerifiableInference.OnPublicFiles.compiledSoundnessError
+        (VerifiableInference.OnPublicFiles.soundnessAnalysisDataOfThreeProtocols F P T U))
+=== VerifiableInference.OnPublicFiles.CompilerSoundnessConditionsOverThreeProtocols.holes
+in full: 5cb05b840bb5b0175c9029acc585ba68a06ec531d0a1b717f51d495980e0c3a8
+∀ {C : Hiop.ConfigurationWithOutOfDomainSample} {F : OnBytes.Flat.Files C} {P : F.Provers}
+  {T : VerifiableInference.OnPublicFiles.InnerCompilerInputFieldsOverThreeProtocols F P}
+  {U : VerifiableInference.OnPublicFiles.SoundnessAnalysisFieldsOverThreeProtocols F P},
+  VerifiableInference.OnPublicFiles.CompilerSoundnessConditionsOverThreeProtocols F P T U →
+    VerifiableInference.OnPublicFiles.CompilerSoundnessConditionsWithMeaning
+      (VerifiableInference.OnPublicFiles.soundnessAnalysisDataOfThreeProtocols F P T U)
+=== VerifiableInference.Rec.commitmentBinds_of_code
+in full: 6f04d999f3e3670e1f3f2d07970f1a83e2ce5e9a899ca876993f20e4e5149000
+∀ {I X IVK ISK Pf : Type} (G : ZKCP.Gen.Arg (Rom.rom 256) I X Unit IVK ISK Pf)
+  (E : ZKCP.Gen.Extractor (Rom.rom 256) I X Unit IVK Pf) (enc : IVK → Option ZKCP.Str),
+  ZKCP.CodeIsOneToOne enc →
+    ∀ (IsTrue : I → X → Prop) (ε : Nat → Nat → ENNReal),
+      VerifiableInference.Rec.CommitmentBinds G E enc ((ZKCP.Special.extOf E).digestKey enc) IsTrue ε fun t =>
+        instHDiv.hDiv (instHPow.hPow (instHAdd.hAdd t 2) 2).cast (instHPow.hPow 2 256)
+=== VerifiableInference.OnPublicFiles.Hole.commitment_of_code
+in full: 27472b0a8b6054e70f87113b6513d80821b18858e650e66ed78fc5d90743fd4d
+∀ (d : VerifiableInference.OnPublicFiles.ProtocolDescription),
+  ZKCP.CodeIsOneToOne d.enc →
+    Eq d.ext
+        ((ZKCP.Special.extOf
+              (Rom.extractorOverOneHashFunction d.m
+                (Compile.Batch.Cms.indexExtractorAtRootAndOutOfDomainSample d.W))).digestKey
+          d.enc) →
+      (∀ (t : Nat), Eq (d.εId t) (instHDiv.hDiv (instHPow.hPow (instHAdd.hAdd t 2) 2).cast (instHPow.hPow 2 256))) →
+        VerifiableInference.OnPublicFiles.Hole.commitment d
+=== OnBytes.K.frontV_is_innerCompiledVerifier
+in full: 698bc9bc4e2405dc86e10a92eaa68129554934f3806daf24173e3352a512273c
+∀ {r : VerifiableInference.OnPublicFiles.InnerCompilerInput} (c : ZKCP.Digest 256)
+  (prompt output : List VerifiableInference.Token)
+  (proof :
+    Prod (List VerifiableInference.Token)
+      (Prod (TypedOracleCompiler.Compile.Batch.Cms.KeyRoot 256 r.protocol)
+        (TypedOracleCompiler.Compile.Batch.Cms.OfflineLinkOnlineProof 256 r.protocol r.offlineRoundSplits
+          r.linkRoundSplits))),
+  Eq
+    (OnBytes.K.frontV
+      (Rom.schemeOverOneHashFunction r.oracleCoding (VerifiableInference.OnPublicFiles.schemeOverTypedOracles r))
+      r.keyCode r.coinBound r.buildInstance r.fallbackProof c prompt output proof)
+    (VerifiableInference.OnPublicFiles.innerCompiledVerifier r c prompt output proof)
+=== VerifiableInference.OnPublicFiles.innerCompiledVerifierSoundFromDryRunAtFullSize
+in full: eb2516b5c3edd5f9cd116364aef067b445a6c5e3b906df60bc46e9158dedf568
+∀ {X : Type} {A : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecFull}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtFullSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers},
+  Cb.BCHKS46At OnBytes.Slice.GF OnBytes.Slice.GE →
+    ∀ {T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtFullSize A E G P},
+      VerifiableInference.OnPublicFiles.RemainingSoundnessConditionsFromDryRunAtFullSize T →
+        VerifiableInference.SoundForWith
+          (VerifiableInference.OnPublicFiles.innerSystem
+            (VerifiableInference.OnPublicFiles.innerCompilerInputFromDryRunAtFullSize T))
+          (VerifiableInference.OnPublicFiles.compiledIndexExtractor
+            (VerifiableInference.OnPublicFiles.soundnessAnalysisDataFromDryRunAtFullSize T))
+          (VerifiableInference.OnPublicFiles.innerSystem
+              (VerifiableInference.OnPublicFiles.innerCompilerInputFromDryRunAtFullSize T)).IsModelOutput
+          (VerifiableInference.OnPublicFiles.compiledSoundnessError
+            (VerifiableInference.OnPublicFiles.soundnessAnalysisDataFromDryRunAtFullSize T))
+=== VerifiableInference.OnPublicFiles.innerCompiledVerifierSoundFromDryRunAtSmallSize
+in full: 264865313fe8367f21bde583f541e554d0003e4bf6ed2528ad1906040605bdd7
+∀ {X : Type} {A : (OnBytes.Slice.srS.toDecR OnBytes.Slice.srZ 524285).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecSmall}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtSmallSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers},
+  Cb.BCHKS46At OnBytes.Slice.GF OnBytes.Slice.GE →
+    ∀ {T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtSmallSize A E G P},
+      VerifiableInference.OnPublicFiles.RemainingSoundnessConditionsFromDryRunAtSmallSize T →
+        VerifiableInference.SoundForWith
+          (VerifiableInference.OnPublicFiles.innerSystem
+            (VerifiableInference.OnPublicFiles.innerCompilerInputFromDryRunAtSmallSize T))
+          (VerifiableInference.OnPublicFiles.compiledIndexExtractor
+            (VerifiableInference.OnPublicFiles.soundnessAnalysisDataFromDryRunAtSmallSize T))
+          (VerifiableInference.OnPublicFiles.innerSystem
+              (VerifiableInference.OnPublicFiles.innerCompilerInputFromDryRunAtSmallSize T)).IsModelOutput
+          (VerifiableInference.OnPublicFiles.compiledSoundnessError
+            (VerifiableInference.OnPublicFiles.soundnessAnalysisDataFromDryRunAtSmallSize T))
+=== VerifiableInference.OnPublicFiles.byDefinitionFull
+in full: 1958719887dda3fccfdd934b9909767a96ad017f738053722f0e26ddff61b9bd
+∀ {X : Type} {A : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecFull}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtFullSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers}
+  (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtFullSize A E G P),
+  VerifiableInference.OnPublicFiles.ByDefinitionFull T
+=== VerifiableInference.OnPublicFiles.byDefinitionSmall
+in full: c0794fc067fbc9e201379621a23faacb096ed08a50cc4552bd0d72efc6029d0d
+∀ {X : Type} {A : (OnBytes.Slice.srS.toDecR OnBytes.Slice.srZ 524285).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecSmall}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtSmallSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers}
+  (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtSmallSize A E G P),
+  VerifiableInference.OnPublicFiles.ByDefinitionSmall T
+=== VerifiableInference.OnPublicFiles.byConstructionFull
+in full: c7b816663ee0576194b5b92b1b7cf46fcaf842398376f89098fab57bc88c4d89
+∀ {X : Type} {A : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecFull}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtFullSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers}
+  (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtFullSize A E G P),
+  VerifiableInference.OnPublicFiles.ByConstructionFull T
+=== VerifiableInference.OnPublicFiles.byConstructionSmall
+in full: e036841ee4b3d2832dd0c8e4cf6e98d5f8a5ff8ff9bbc8a208b50c2e9b784909
+∀ {X : Type} {A : (OnBytes.Slice.srS.toDecR OnBytes.Slice.srZ 524285).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecSmall}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtSmallSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers}
+  (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtSmallSize A E G P),
+  VerifiableInference.OnPublicFiles.ByConstructionSmall T
+=== VerifiableInference.OnPublicFiles.entrySoundFromDryRunAtFullSize
+in full: 9b4cab82f7bfbcfb98c5787e7a5223f7572f4f688fd8df01d64e1875e30314c6
+∀ {X : Type} {A : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecFull}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtFullSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers},
+  Cb.BCHKS46At OnBytes.Slice.GF OnBytes.Slice.GE →
+    ∀ (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtFullSize A E G P),
+      VerifiableInference.OnPublicFiles.CompilerSoundnessConditionStatements.entrySound
+        (VerifiableInference.OnPublicFiles.soundnessAnalysisDataFromDryRunAtFullSize T)
+=== VerifiableInference.OnPublicFiles.entrySoundFromDryRunAtSmallSize
+in full: 858af49afc86d6ecbfff9c0bce3a61fe93ab1cba8da8970180c5aa66cbbe67be
+∀ {X : Type} {A : (OnBytes.Slice.srS.toDecR OnBytes.Slice.srZ 524285).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecSmall}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtSmallSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers},
+  Cb.BCHKS46At OnBytes.Slice.GF OnBytes.Slice.GE →
+    ∀ (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtSmallSize A E G P),
+      VerifiableInference.OnPublicFiles.CompilerSoundnessConditionStatements.entrySound
+        (VerifiableInference.OnPublicFiles.soundnessAnalysisDataFromDryRunAtSmallSize T)
+=== VerifiableInference.OnPublicFiles.seedLawFromDryRunAtFullSize
+in full: 2b66f2c5da9a1eeafa0afc2dc5fdb40181a4740fc446b747a499e9bef6dadda9
+∀ {X : Type} {A : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecFull}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtFullSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers}
+  (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtFullSize A E G P),
+  VerifiableInference.OnPublicFiles.CompilerSoundnessConditionStatements.seedLaw
+    (VerifiableInference.OnPublicFiles.soundnessAnalysisDataFromDryRunAtFullSize T)
+=== VerifiableInference.OnPublicFiles.seedLawFromDryRunAtSmallSize
+in full: 93a9008ed4c139791029cdff70f719a3206dd1fa4a1ffb06ad48d973e90c9e51
+∀ {X : Type} {A : (OnBytes.Slice.srS.toDecR OnBytes.Slice.srZ 524285).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecSmall}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtSmallSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers}
+  (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtSmallSize A E G P),
+  VerifiableInference.OnPublicFiles.CompilerSoundnessConditionStatements.seedLaw
+    (VerifiableInference.OnPublicFiles.soundnessAnalysisDataFromDryRunAtSmallSize T)
+=== VerifiableInference.OnPublicFiles.answersCodeFromDryRunAtFullSize
+in full: 9af6b9476729013f1fe101550e585a98f1764b7eb573b9257337696b2ce8244b
+∀ {X : Type} {A : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecFull}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtFullSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers}
+  (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtFullSize A E G P),
+  VerifiableInference.OnPublicFiles.CompilerSoundnessConditionStatements.answersCode
+=== VerifiableInference.OnPublicFiles.answersCodeFromDryRunAtSmallSize
+in full: 67269b561e379ae7b9dc1f853e3a81b7ffffbb8e6648ca569aa99dfd4920456c
+∀ {X : Type} {A : (OnBytes.Slice.srS.toDecR OnBytes.Slice.srZ 524285).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecSmall}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtSmallSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers}
+  (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtSmallSize A E G P),
+  VerifiableInference.OnPublicFiles.CompilerSoundnessConditionStatements.answersCode
+=== VerifiableInference.OnPublicFiles.withContentFull
+in full: d1f1653a37e8568709d447f4ce0f44e50e261b5ba73cee13671b9e425ba9aab6
+∀ {X : Type} {A : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecFull}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtFullSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers},
+  Cb.BCHKS46At OnBytes.Slice.GF OnBytes.Slice.GE →
+    ∀ (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtFullSize A E G P),
+      VerifiableInference.OnPublicFiles.WithContentFull T
+=== VerifiableInference.OnPublicFiles.withContentSmall
+in full: fb8af4e0932b4627e7eb5ef29391938fbb48edb8296a627090654aeb7f96ea06
+∀ {X : Type} {A : (OnBytes.Slice.srS.toDecR OnBytes.Slice.srZ 524285).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecSmall}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtSmallSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers},
+  Cb.BCHKS46At OnBytes.Slice.GF OnBytes.Slice.GE →
+    ∀ (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtSmallSize A E G P),
+      VerifiableInference.OnPublicFiles.WithContentSmall T
+=== VerifiableInference.OnPublicFiles.wiresFromDryRunAtFullSize
+in full: 020a62ee017897fe489aa178fe07c773afe77e4d10de461b0d288c112b431804
+∀ {X : Type} {A : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecFull}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtFullSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers}
+  (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtFullSize A E G P),
+  VerifiableInference.OnPublicFiles.CompilerSoundnessConditionStatements.wires
+=== VerifiableInference.OnPublicFiles.wiresFromDryRunAtSmallSize
+in full: 65c8e41795ba456e43c06391d0d2fbf1b99ebe088d1314eab8cbede1999d77d4
+∀ {X : Type} {A : (OnBytes.Slice.srS.toDecR OnBytes.Slice.srZ 524285).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecSmall}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtSmallSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers}
+  (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtSmallSize A E G P),
+  VerifiableInference.OnPublicFiles.CompilerSoundnessConditionStatements.wires
+=== VerifiableInference.OnPublicFiles.atOurWiringFull
+in full: 807d9dcaa50f8723fb28aced32f5d1b16eb3fac34d1118261574feecef5060e8
+∀ {X : Type} {A : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecFull}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtFullSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers}
+  (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtFullSize A E G P),
+  VerifiableInference.OnPublicFiles.AtOurWiringFull T
+=== VerifiableInference.OnPublicFiles.atOurWiringSmall
+in full: 6fb6501232f6f198151d7b87f4a206006897afab8de6091de1e6a9b8d2367bd2
+∀ {X : Type} {A : (OnBytes.Slice.srS.toDecR OnBytes.Slice.srZ 524285).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecSmall}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtSmallSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers}
+  (T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtSmallSize A E G P),
+  VerifiableInference.OnPublicFiles.AtOurWiringSmall T
+=== VerifiableInference.OnPublicFiles.RemainingSoundnessConditionsFromDryRunAtFullSize.holes
+in full: 2ff9410857158e43a5a8341465be9abbc7ccfbe82d17a8d33c380f64b494dc4f
+∀ {X : Type} {A : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecFull}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtFullSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers},
+  Cb.BCHKS46At OnBytes.Slice.GF OnBytes.Slice.GE →
+    ∀ {T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtFullSize A E G P},
+      VerifiableInference.OnPublicFiles.RemainingSoundnessConditionsFromDryRunAtFullSize T →
+        VerifiableInference.OnPublicFiles.CompilerSoundnessConditionsWithMeaning
+          (VerifiableInference.OnPublicFiles.soundnessAnalysisDataFromDryRunAtFullSize T)
+=== VerifiableInference.OnPublicFiles.RemainingSoundnessConditionsFromDryRunAtSmallSize.holes
+in full: 7f4abe4669294739bf8f4894849a363589b3ece782922c24ce7bf1a80543e1d7
+∀ {X : Type} {A : (OnBytes.Slice.srS.toDecR OnBytes.Slice.srZ 524285).Claims X} {E : OnBytes.Flat.Coding A}
+  {G : OnBytes.Flat.FilesParameters X OnBytes.Flat.RecSmall}
+  {P : (OnBytes.Flat.threeProtocolsFromDryRunAtSmallSize A (OnBytes.Flat.relationsAndEncodingOfClaims A E) G).Provers},
+  Cb.BCHKS46At OnBytes.Slice.GF OnBytes.Slice.GE →
+    ∀ {T : VerifiableInference.OnPublicFiles.InnerCompilerInputAndAnalysisFieldsFromDryRunAtSmallSize A E G P},
+      VerifiableInference.OnPublicFiles.RemainingSoundnessConditionsFromDryRunAtSmallSize T →
+        VerifiableInference.OnPublicFiles.CompilerSoundnessConditionsWithMeaning
+          (VerifiableInference.OnPublicFiles.soundnessAnalysisDataFromDryRunAtSmallSize T)
+=== VerifierAndGoals.AtTheName.keySound_holds
+in full: 77907a7c468209ba6b1bb4a83888579066c237175f508a936c676d7c18e0f9f6
+VerifierAndGoals.AtTheName.KeySound
+=== VerifierAndGoals.AtTheName.nearestSound_of_verify
+in full: d465bd375748de75e602a2efc26ca23c6ecc6a6738cf1da4ee2ff85209342b26
+VerifierAndGoals.NearestSound VerifierAndGoals.theDescription fun t => VerifierAndGoals.soundnessErrorInQueries t 1
+=== VerifierAndGoals.AtTheName.soundUnderPolicy_of_verify_at
+in full: 342c4def99bfd80cc6c14d6e1882d7cbe158bbc5e1b852a80a0d8b0fe47238ed
+∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      VerifierAndGoals.AtTheName.SoundUnderPolicyAtZ
+        (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) VerifierAndGoals.soundnessErrorInQueries
+        Z pp
+=== VerifierAndGoals.AtTheName.sound_of_verify_at
+in full: 086cee97abc9a918bf46fddb0d3d0403c9c4a5c245aea2bd926299f6df414f05
+∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      Eq pp.pol Inst.Model.AcceptancePolicy.exact →
+        VerifiableInference.Sound
+          (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+            (VerifierAndGoals.settingsOfRead pp))
+          fun t => VerifierAndGoals.soundnessErrorInQueries t 1
+=== VerifierAndGoals.AtTheName.sound_of_verify_parsers_at
+in full: ac6456a6c7e6e7d01ba3d8730d5fcb975dcfdc74dae026f06aaec439bbc71474
+∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      Eq pp.pol Inst.Model.AcceptancePolicy.exact →
+        ∀ (Form : Type)
+          (prove :
+            VerifiableInference.ModelWeights (VerifierAndGoals.settingsOfRead pp) →
+              (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription).Rand →
+                List VerifiableInference.Token →
+                  List VerifiableInference.Token → VerifiableInference.RandomizedAlgorithm Form)
+          (parse :
+            VerifierAndGoals.Parser (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z Form)
+          (n : Nat),
+          parse.Within n →
+            VerifiableInference.Sound
+              (VerifierAndGoals.system (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+                (VerifierAndGoals.settingsOfRead pp) Form prove parse)
+              fun t => VerifierAndGoals.soundnessErrorInQueries t n
+=== VerifierAndGoals.AtTheName.soundAndBinding_level_digits_of_verify_at
+in full: e9b69a6189763576df9f9778deceed68ed2a5f869b296ad31a1cdc06ccae036a
+∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      Eq pp.pol Inst.Model.AcceptancePolicy.exact →
+        VerifiableInference.SoundAndBinding
+          (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction FlashProve.theWideDigits) Z
+            (VerifierAndGoals.settingsOfRead pp))
+          VerifierAndGoals.levelError
+=== VerifierAndGoals.AtTheName.soundOpened_level_digits_of_verify_at
+in full: 64c317e859d78e9369f3d0d5920c7ba1df20d81550df691fa91cbb16aacd0990
+∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      Eq pp.pol Inst.Model.AcceptancePolicy.exact →
+        VerifiableInference.SoundOpened
+          (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction FlashProve.theWideDigits) Z
+            (VerifierAndGoals.settingsOfRead pp))
+          fun t => instHMul.hMul 2 (VerifierAndGoals.levelError t)
+=== VerifierAndGoals.AtTheName.nearestSoundAndBinding_level_digits_of_verify
+in full: a3dd99113a95cf55ec151195dd8dec7c9fca7d9c65a960c40ce8278da5f547c3
+VerifierAndGoals.NearestSoundAndBinding FlashProve.theWideDigits VerifierAndGoals.levelError
+=== VerifierAndGoals.AtTheName.nearestSoundOpened_level_digits_of_verify
+in full: 9937377ecea5e0d6d0cba7028012b9e91dce735632d6a2623ec1b6472716ad07
+VerifierAndGoals.NearestSoundOpened FlashProve.theWideDigits fun t => instHMul.hMul 2 (VerifierAndGoals.levelError t)
+=== VerifierAndGoals.AtTheName.g8bits_of_verify
+in full: 1902ebfd12c476ad32c8ba41ac5dd66b5f94c7c423432b6026c604eb0e82315e
+VerifierAndGoals.G8bits VerifierAndGoals.theDescription
+=== PV.Ride.theForm_eq_verify
+in full: eceb45f901f320eeac392ac81b36740958b840c9a66d9e960a7603a6ba4f8d4f
+∀ (Z : VerifierAndGoals.PublicFiles) (O : ByteArray → ByteArray),
+  (∀ (x : ByteArray), Eq (O x).size 32) →
+    ∀ (commitment : VerifiableInference.Commitment) (prompt output : List VerifiableInference.Token)
+      (B : FlashProve.FormBytes),
+      Eq (PV.Ride.theForm Z O commitment prompt output B)
+        (Option.some
+          (VerifiableInference.DeterministicAlgorithm.evaluate (VerifiableInference.OnPublicFiles.hashOf O)
+            (VerifierAndGoals.verify (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+              ((VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription).parse Z) commitment prompt output
+              B)))
+=== PV.Ride.sound_of_the_form_at
+in full: 0bb4b96cf7bb19403bb98272071d6f9732a8ca8b3c03580c520800d171b28f72
+∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      Eq pp.pol Inst.Model.AcceptancePolicy.exact →
+        And
+          (VerifiableInference.Sound
+            (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+              (VerifierAndGoals.settingsOfRead pp))
+            fun t => VerifierAndGoals.soundnessErrorInQueries t 1)
+          (∀ (O : ByteArray → ByteArray),
+            (∀ (x : ByteArray), Eq (O x).size 32) →
+              ∀ (commitment : VerifiableInference.Commitment) (prompt output : List VerifiableInference.Token)
+                (B : FlashProve.FormBytes),
+                Eq (PV.Ride.theForm Z O commitment prompt output B)
+                  (Option.some
+                    (VerifiableInference.DeterministicAlgorithm.evaluate (VerifiableInference.OnPublicFiles.hashOf O)
+                      ((VerifierAndGoals.systemOfRecord
+                            (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+                            (VerifierAndGoals.settingsOfRead pp)).verify
+                        commitment prompt output B))))
+=== PV.Ride.soundOfDecision_accepts_iff
+in full: d2246ccc7542be88bc51613d1d8743636c2cc690c97a93a0b480eaaba0446660
+∀ (system : VerifiableInference.ArgumentSystem) (ε : Nat → ENNReal),
+  Iff (PV.Ride.SoundOfDecision system system.accepts ε) (VerifiableInference.Sound system ε)
+=== PV.Ride.sound_of_the_form_events
+in full: 0c1fcd8f89ec9e5b1fd6b03a7c43ca5a4d1a5ebc094ecb8a2345b4ec0a0c15f8
+∀ (rep : VerifiableInference.Hash → ByteArray → ByteArray),
+  (∀ (h : VerifiableInference.Hash), Eq (VerifiableInference.OnPublicFiles.hashOf (rep h)) h) →
+    ∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+      Eq (VerifierAndGoals.InScope Z) Bool.true →
+        Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+          Eq pp.pol Inst.Model.AcceptancePolicy.exact →
+            PV.Ride.SoundOfDecision
+              (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+                (VerifierAndGoals.settingsOfRead pp))
+              (PV.Ride.formAccepts rep Z) fun t => VerifierAndGoals.soundnessErrorInQueries t 1
+=== PV.Ride.sound_of_the_form_events_oOf
+in full: 424ffb8335208e62ab4966f5b871ef062c88bd8625797f72393f0ec24075d473
+∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      Eq pp.pol Inst.Model.AcceptancePolicy.exact →
+        PV.Ride.SoundOfDecision
+          (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+            (VerifierAndGoals.settingsOfRead pp))
+          (PV.Ride.formAccepts (fun h => Run.oOf fun x => h) Z) fun t => VerifierAndGoals.soundnessErrorInQueries t 1
+=== PV.Ride.verdictThe_some
+in full: 00f2103666874b4f8420272eba374d02a61121b7e3fcc5d8dcad2c15260438b4
+∀ (Z : VerifierAndGoals.PublicFiles) (O : ByteArray → ByteArray),
+  (∀ (b : ByteArray), Eq (O b).size 32) →
+    ∀ (B : FlashProve.FormBytes) (commitment : VerifiableInference.Commitment)
+      (prompt output : List VerifiableInference.Token),
+      Exists fun b =>
+        Eq (PV.Ride.verdictThe Z O B (PV.Ride.rideOf PV.Ride.letsThe Z O B commitment prompt output)) (Option.some b)
+=== PV.Ride.verdictThe_eq
+in full: f97e3e5255b0b0aaae0c170411d6c4b43b91a5d85c04add4eb463c3321405a53
+∀ (Z : VerifierAndGoals.PublicFiles) (O : ByteArray → ByteArray),
+  (∀ (b : ByteArray), Eq (O b).size 32) →
+    ∀ (B : FlashProve.FormBytes) (commitment : VerifiableInference.Commitment)
+      (prompt output : List VerifiableInference.Token),
+      Eq (PV.Ride.verdictThe Z O B (PV.Ride.rideOf PV.Ride.letsThe Z O B commitment prompt output))
+        (Option.some
+          (VerifiableInference.DeterministicAlgorithm.evaluate (VerifiableInference.OnPublicFiles.hashOf O)
+            (VerifierAndGoals.verify (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+              ((VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription).parse Z) commitment prompt output
+              B)))
+=== PV.Ride.formAccepts_eq
+in full: b8e72341e91d5c10248c4186436242de5285bb268b4d0d46c173e893f4be841f
+∀ (rep : VerifiableInference.Hash → ByteArray → ByteArray),
+  (∀ (h : VerifiableInference.Hash) (b : ByteArray), Eq (rep h b).size 32) →
+    (∀ (h : VerifiableInference.Hash), Eq (VerifiableInference.OnPublicFiles.hashOf (rep h)) h) →
+      ∀ (Z : VerifierAndGoals.PublicFiles) (s : IntegerTransformer.Settings) (hash : VerifiableInference.Hash)
+        (commitment : VerifiableInference.Commitment) (prompt output : List VerifiableInference.Token)
+        (B : FlashProve.FormBytes),
+        Eq (PV.Ride.formAccepts rep Z hash commitment prompt output B)
+          ((VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+                s).accepts
+            hash commitment prompt output B)
+=== PV.Ride.soundOfDecision_form_iff
+in full: f70d0fc965171548a59813914216550b01c3ddc83fee73f82fc7f65271567da1
+∀ (rep : VerifiableInference.Hash → ByteArray → ByteArray),
+  (∀ (h : VerifiableInference.Hash) (b : ByteArray), Eq (rep h b).size 32) →
+    (∀ (h : VerifiableInference.Hash), Eq (VerifiableInference.OnPublicFiles.hashOf (rep h)) h) →
+      ∀ (Z : VerifierAndGoals.PublicFiles) (s : IntegerTransformer.Settings) (ε : Nat → ENNReal),
+        Iff
+          (PV.Ride.SoundOfDecision
+            (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+              s)
+            (PV.Ride.formAccepts rep Z) ε)
+          (VerifiableInference.Sound
+            (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+              s)
+            ε)
+=== Johnson.Prover.Link.link_yes
+in full: 5435e2923acbd43ebaa6b7c07321a576be184e39769b5ded1c01f3c86108af91
+Johnson.Prover.Link.LinkYes 97
+=== FlashProve.dec_at_D
+in full: 5155142b2c33c27cf717e9c7b5b36e98e81b1ef4e43607cef94238a3761d68ab
+∀ {Z : VerifierAndGoals.PublicFiles},
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (FlashProve.protocolDataWellFormed (VerifierAndGoals.asDescriptionFiles Z)) Bool.true →
+      Eq (FlashProve.dataAtFiles FlashProve.flashProveData Z).dec fun rr V =>
+        (Desc.K15.linkDescriptionAt Desc.K15.frP (Desc.K15.linkDeclaredRounds Desc.K15.frP)
+              (Desc.K15.linkRoundsMatchPlan Desc.K15.frP OnBytes.Params.recordPlan)).run
+          { fst := OnBytes.Slice.keyOf (fun β => β.val) rr.fst,
+            snd :=
+              have __src := OnBytes.Slice.keyOf (fun β => β.val) rr.snd;
+              { item := 1, record := __src.record, seeds := __src.seeds } }
+          V
+=== FlashProve.linkFits_at
+in full: ed2cde83ed3841b56bb12b57f4cecd1ed5e12965aee2942eb86c145ac0c67c60
+∀ (b : VerifierAndGoals.PublicFiles → Nat) (Z : VerifierAndGoals.PublicFiles),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (FlashProve.protocolDataWellFormed (VerifierAndGoals.asDescriptionFiles Z)) Bool.true →
+      ∀ (Kc : Type) [inst : Fintype Kc] [inst_1 : Nonempty Kc] (coinsOf : Kc → Johnson.Prover.Link.LCoins)
+        (Hs : OnBytes.Prover.ThreeProvers (FlashProve.homeR b Z).protocol) (F : OnBytes.Prover.Falls Hs)
+        (Yes : (FlashProve.homeR b Z).Index → (FlashProve.homeR b Z).Instance → Prop)
+        (Zs :
+          (FlashProve.homeR b Z).Index →
+            (FlashProve.homeR b Z).protocol.EncodingRandomness → Set (FlashProve.homeR b Z).protocol.OutOfDomainSeed),
+        Eq Hs.Lk
+            (Johnson.Prover.Link.linkRec (Run.ckP Fmt.Fld.two) PV.EntryFive.dsF OnBytes.Slice.frS.P.T.a PV.EntryFive.xsF
+              (FlashProve.dataAtFiles FlashProve.flashProveData Z).dec
+              (fun w =>
+                { fst := (FlashProve.homeR b Z).protocol.encodeIndex w.fst w.snd.fst.fst,
+                  snd := (FlashProve.homeR b Z).protocol.encodeIndex w.fst w.snd.snd.fst })
+              fun w x c =>
+              Johnson.Prover.Link.linkNext Desc.K15.frP OnBytes.Slice.frS 97
+                (Johnson.Prover.Link.linOf x
+                  { fst := (FlashProve.homeR b Z).protocol.encodeIndex w.fst w.snd.fst.fst,
+                    snd := (FlashProve.homeR b Z).protocol.encodeIndex w.fst w.snd.snd.fst }
+                  (OnBytes.Slice.honestPolys OnBytes.Slice.frS
+                    (OnBytes.Flat.rowWords OnBytes.Slice.frS
+                      (OnBytes.Slice.honestMsgs OnBytes.Slice.frS
+                        (OnBytes.Flat.cellWords OnBytes.Slice.frS OnBytes.Slice.frZ 402653181
+                          VerifiableInference.OnPublicFiles.numsRef w.fst w.snd.fst.fst.fst)))
+                    (OnBytes.Flat.tailWords OnBytes.Slice.frS w.snd.fst.fst.snd))
+                  (OnBytes.Slice.honestPolys OnBytes.Slice.frS
+                    (OnBytes.Flat.rowWords OnBytes.Slice.frS
+                      (OnBytes.Slice.honestMsgs OnBytes.Slice.frS
+                        (OnBytes.Flat.cellWords OnBytes.Slice.frS OnBytes.Slice.frZ 402653181
+                          VerifiableInference.OnPublicFiles.numsRef w.fst w.snd.snd.fst.fst)))
+                    (OnBytes.Flat.tailWords OnBytes.Slice.frS w.snd.snd.fst.snd)))
+                (coinsOf c)) →
+          (∀
+              (w :
+                Prod (FlashProve.homeR b Z).Index
+                  (Prod
+                    (Prod (FlashProve.homeR b Z).protocol.EncodingRandomness
+                      (FlashProve.homeR b Z).protocol.OutOfDomainSeed)
+                    (Prod (FlashProve.homeR b Z).protocol.EncodingRandomness
+                      (FlashProve.homeR b Z).protocol.OutOfDomainSeed)))
+              (x : Prod (FlashProve.homeR b Z).protocol.Rec (FlashProve.homeR b Z).protocol.Rec) (c : Hs.Lk.Coin),
+              Eq (F.Lk w x c) Set.instEmptyCollection.emptyCollection) →
+            And
+              (∀ (i : (FlashProve.homeR b Z).Index) (r : (FlashProve.homeR b Z).protocol.EncodingRandomness)
+                (e : (FlashProve.homeR b Z).protocol.OutOfDomainSeed)
+                (r' : (FlashProve.homeR b Z).protocol.EncodingRandomness)
+                (e' : (FlashProve.homeR b Z).protocol.OutOfDomainSeed),
+                Eq (Hs.Lk.ext { fst := i, snd := { fst := { fst := r, snd := e }, snd := { fst := r', snd := e' } } })
+                  { fst := (FlashProve.homeR b Z).protocol.encodeIndex i r,
+                    snd := (FlashProve.homeR b Z).protocol.encodeIndex i r' })
+              (And
+                (∀
+                  (w :
+                    Prod (FlashProve.homeR b Z).Index
+                      (Prod
+                        (Prod (FlashProve.homeR b Z).protocol.EncodingRandomness
+                          (FlashProve.homeR b Z).protocol.OutOfDomainSeed)
+                        (Prod (FlashProve.homeR b Z).protocol.EncodingRandomness
+                          (FlashProve.homeR b Z).protocol.OutOfDomainSeed)))
+                  (x :
+                    Prod
+                      (Prod (FlashProve.homeR b Z).protocol.OutOfDomainSeed
+                        (FlashProve.homeR b Z).protocol.OutOfDomainAnswer)
+                      (Prod (FlashProve.homeR b Z).protocol.OutOfDomainSeed
+                        (FlashProve.homeR b Z).protocol.OutOfDomainAnswer))
+                  (c : Hs.Lk.Coin) (ρ : Iop.Rho (FlashProve.homeR b Z).protocol.link.shape),
+                  Set.instMembership.mem (Set.instUnion.union (Hs.Lk.withheld w x) (F.Lk w x c))
+                      (TypedOracleCompiler.Iop.RoundsQueryLayout.zero (FlashProve.homeR b Z).protocol.link.shape
+                        (FlashProve.homeR b Z).linkRoundSplits
+                        (TypedOracleCompiler.Compile.Batch.Cms.wLC (FlashProve.homeR b Z).queryLayout).sh ρ) →
+                    Set.instMembership.mem (Set.instUnion.union (Hs.Lk.withheld w x) (F.Lk w x c)) ρ)
+                (And
+                  (∀ (i : (FlashProve.homeR b Z).Index) (x : (FlashProve.homeR b Z).Instance)
+                    (r : (FlashProve.homeR b Z).protocol.EncodingRandomness)
+                    (e : (FlashProve.homeR b Z).protocol.OutOfDomainSeed)
+                    (r' : (FlashProve.homeR b Z).protocol.EncodingRandomness)
+                    (e' : (FlashProve.homeR b Z).protocol.OutOfDomainSeed) (c : Hs.Lk.Coin),
+                    Yes i x →
+                      Not (Set.instMembership.mem (Zs i r) e) →
+                        Not (Set.instMembership.mem (Zs i r') e') →
+                          OnBytes.Prover.AccLaw
+                            (TypedOracleCompiler.Compile.Batch.Cms.batLC (FlashProve.homeR b Z).protocol
+                              (FlashProve.homeR b Z).linkRoundSplits)
+                            (TypedOracleCompiler.Compile.Batch.Cms.wLC (FlashProve.homeR b Z).queryLayout)
+                            { fst := (FlashProve.homeR b Z).protocol.recOf i r e,
+                              snd := (FlashProve.homeR b Z).protocol.recOf i r' e' }
+                            (Hs.Lk.ext
+                              { fst := i, snd := { fst := { fst := r, snd := e }, snd := { fst := r', snd := e' } } })
+                            (Hs.Lk.strat
+                              { fst := i, snd := { fst := { fst := r, snd := e }, snd := { fst := r', snd := e' } } }
+                              { fst := (FlashProve.homeR b Z).protocol.recOf i r e,
+                                snd := (FlashProve.homeR b Z).protocol.recOf i r' e' }
+                              c)
+                            (Set.instUnion.union
+                              (Hs.Lk.withheld
+                                { fst := i, snd := { fst := { fst := r, snd := e }, snd := { fst := r', snd := e' } } }
+                                { fst := (FlashProve.homeR b Z).protocol.recOf i r e,
+                                  snd := (FlashProve.homeR b Z).protocol.recOf i r' e' })
+                              (F.Lk
+                                { fst := i, snd := { fst := { fst := r, snd := e }, snd := { fst := r', snd := e' } } }
+                                { fst := (FlashProve.homeR b Z).protocol.recOf i r e,
+                                  snd := (FlashProve.homeR b Z).protocol.recOf i r' e' }
+                                c)))
+                  (∀ (i : (FlashProve.homeR b Z).Index) (x : (FlashProve.homeR b Z).Instance)
+                    (r : (FlashProve.homeR b Z).protocol.EncodingRandomness)
+                    (e : (FlashProve.homeR b Z).protocol.OutOfDomainSeed)
+                    (r' : (FlashProve.homeR b Z).protocol.EncodingRandomness)
+                    (e' : (FlashProve.homeR b Z).protocol.OutOfDomainSeed) (c : Hs.Lk.Coin),
+                    Yes i x →
+                      ENNReal.instPartialOrder.le
+                        (Iop.prRho
+                          (Set.instUnion.union
+                            (Hs.Lk.withheld
+                              { fst := i, snd := { fst := { fst := r, snd := e }, snd := { fst := r', snd := e' } } }
+                              { fst := (FlashProve.homeR b Z).protocol.recOf i r e,
+                                snd := (FlashProve.homeR b Z).protocol.recOf i r' e' })
+                            (F.Lk
+                              { fst := i, snd := { fst := { fst := r, snd := e }, snd := { fst := r', snd := e' } } }
+                              { fst := (FlashProve.homeR b Z).protocol.recOf i r e,
+                                snd := (FlashProve.homeR b Z).protocol.recOf i r' e' }
+                              c)))
+                        0)))
+=== FlashProve.completeOn_last
+in full: 3efc2153dc6dea0d0a5e62255b119cc5cc43cde82ecf5f8505088b850630d308
+∀ {Rand : Type} {B N : Nat} (A : FlashProve.LastArgs FlashProve.committerCoinCountLessOne Rand B N)
+  {Z : VerifierAndGoals.PublicFiles} {pp : Inst.Model.ScalesAndPolicy} {α : ENNReal},
+  FlashProve.LastFits A Z pp α →
+    VerifiableInference.CompleteOn
+      (VerifierAndGoals.systemOfRecord
+        (VerifierAndGoals.atSecondHashFunction (FlashProve.member A.endArgs.args (FlashProve.namedGen A.ra A.sb))) Z
+        (VerifierAndGoals.settingsOfRead pp))
+      (VerifiableInference.CanServe (VerifierAndGoals.settingsOfRead pp)) α
+=== FlashProve.meant_home
+in full: 3def5bcf0eb9a887644aef0402ab3584e09d6319cf4b33cc314b7f246132eb00
+∀ (b : VerifierAndGoals.PublicFiles → Nat) (Z : VerifierAndGoals.PublicFiles) (i : (FlashProve.homeR b Z).Index)
+  (q q' : (FlashProve.homeR b Z).protocol.EncodingRandomness) (e e' : (FlashProve.homeR b Z).protocol.OutOfDomainSeed)
+  (M₀ M₁ :
+    (OnBytes.Slice.frS.ixR (OnBytes.Slice.recZ OnBytes.Slice.frS.P.T.l 29 1)).Row →
+      OnBytes.Slice.frS.Co → OnBytes.Slice.GE),
+  Eq M₀
+      (OnBytes.Slice.honestPolys OnBytes.Slice.frS
+        (OnBytes.Flat.rowWords OnBytes.Slice.frS
+          (OnBytes.Slice.honestMsgs OnBytes.Slice.frS
+            (OnBytes.Flat.cellWords OnBytes.Slice.frS OnBytes.Slice.frZ 402653181
+              VerifiableInference.OnPublicFiles.numsRef i q.fst)))
+        (OnBytes.Flat.tailWords OnBytes.Slice.frS q.snd)) →
+    Eq M₁
+        (OnBytes.Slice.honestPolys OnBytes.Slice.frS
+          (OnBytes.Flat.rowWords OnBytes.Slice.frS
+            (OnBytes.Slice.honestMsgs OnBytes.Slice.frS
+              (OnBytes.Flat.cellWords OnBytes.Slice.frS OnBytes.Slice.frZ 402653181
+                VerifiableInference.OnPublicFiles.numsRef i q'.fst)))
+          (OnBytes.Flat.tailWords OnBytes.Slice.frS q'.snd)) →
+      And
+        (∀ (ρ : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).ix.Row)
+          (s : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).Z.S),
+          Eq (((FlashProve.homeR b Z).protocol.recOf i q e).snd { fst := ρ, snd := s })
+            (Finset.univ.sum fun j =>
+              instHMul.hMul
+                ((OnBytes.Slice.recZ OnBytes.Slice.frS.P.T.l 29 1).mat ((FlashProve.homeR b Z).protocol.recOf i q e).fst
+                  s j)
+                (M₀ ρ ((OnBytes.Slice.frS.ixR (OnBytes.Slice.recZ OnBytes.Slice.frS.P.T.l 29 1)).pl j))))
+        (And
+          (∀ (ρ : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).ix.Row)
+            (s : (OnBytes.Slice.frS.toDecR OnBytes.Slice.frZ 402653181).Z.S),
+            Eq (((FlashProve.homeR b Z).protocol.recOf i q' e').snd { fst := ρ, snd := s })
+              (Finset.univ.sum fun j =>
+                instHMul.hMul
+                  ((OnBytes.Slice.recZ OnBytes.Slice.frS.P.T.l 29 1).mat
+                    ((FlashProve.homeR b Z).protocol.recOf i q' e').fst s j)
+                  (M₁ ρ ((OnBytes.Slice.frS.ixR (OnBytes.Slice.recZ OnBytes.Slice.frS.P.T.l 29 1)).pl j))))
+          (And
+            (Eq
+              ((OnBytes.Slice.frS.lkR (OnBytes.Slice.recZ OnBytes.Slice.frS.P.T.l 29 1)).tab
+                ((FlashProve.homeR b Z).protocol.encodeIndex i q))
+              fun ρ => (OnBytes.Slice.frS.ixR (OnBytes.Slice.recZ OnBytes.Slice.frS.P.T.l 29 1)).G.mulVec (M₀ ρ))
+            (And
+              (Eq
+                ((OnBytes.Slice.frS.lkR (OnBytes.Slice.recZ OnBytes.Slice.frS.P.T.l 29 1)).tab
+                  ((FlashProve.homeR b Z).protocol.encodeIndex i q'))
+                fun ρ => (OnBytes.Slice.frS.ixR (OnBytes.Slice.recZ OnBytes.Slice.frS.P.T.l 29 1)).G.mulVec (M₁ ρ))
+              (And
+                ((OnBytes.Slice.frS.lwR (OnBytes.Slice.recZ OnBytes.Slice.frS.P.T.l 29 1)).SameOn
+                  ((OnBytes.Slice.frS.ixR (OnBytes.Slice.recZ OnBytes.Slice.frS.P.T.l 29 1)).view M₀)
+                  ((OnBytes.Slice.frS.ixR (OnBytes.Slice.recZ OnBytes.Slice.frS.P.T.l 29 1)).view M₁))
+                (And
+                  (∀ (p : (Iop.twoExternalStrings (instHPow.hPow 2 OnBytes.Slice.frS.P.T.a) Run.PQ.SgX).Pos),
+                    Eq
+                      (((Iop.twoExternalStrings (instHPow.hPow 2 OnBytes.Slice.frS.P.T.a) Run.PQ.SgX).rd
+                              { fst := (FlashProve.homeR b Z).protocol.encodeIndex i q,
+                                snd := (FlashProve.homeR b Z).protocol.encodeIndex i q' }
+                              p).snd.all
+                        fun x => Decidable.decide (instLTUInt64.lt x VerifiableInference.Desc.fieldPrimeWord))
+                      Bool.true)
+                  (∀ (w : Bool) (x : Nat) (h : instLTNat.lt x (instHPow.hPow 2 OnBytes.Slice.frS.P.T.a)),
+                    Eq
+                      ((Iop.twoExternalStrings (instHPow.hPow 2 OnBytes.Slice.frS.P.T.a) Run.PQ.SgX).rd
+                            { fst := (FlashProve.homeR b Z).protocol.encodeIndex i q,
+                              snd := (FlashProve.homeR b Z).protocol.encodeIndex i q' }
+                            (ite (Eq w Bool.true) (Sum.inr ⟨x, h⟩) (Sum.inl ⟨x, h⟩))).snd.length
+                      2048))))))
+=== VerifiableInference.OnPublicFiles.verifierAcceptingNoMoreThanBehindReadingAndParser_soundFor
+in full: a9c468da2495e4ad0d68a10cd9999b7723317b830b6533f940ec8e65e892216c
+∀ {R : VerifiableInference.OnPublicFiles.InnerCompilerInput}
+  (T : VerifiableInference.OnPublicFiles.LayoutsByPublicReading R)
+  (claim : R.Index → List VerifiableInference.Token → List VerifiableInference.Token → Prop) (Wn : Type)
+  (Rno : R.Index → R.Instance → Wn → Prop) (x₀ : R.Instance) (εs : ENNReal),
+  (∀ (d : T.D), VerifiableInference.OnPublicFiles.CompilerSoundnessConditions (T.beside Wn Rno x₀ εs d)) →
+    (∀ (i : R.Index) (x' : Prod (List VerifiableInference.Token) (List VerifiableInference.Token))
+        (a : List VerifiableInference.Token) (x : R.Instance),
+        Eq (R.buildInstance x' a) (Option.some x) → (Exists fun w => Rno i x w) → claim i x'.fst x'.snd) →
+      T.Pub.NoCoin →
+        Rom.OComp.AsksIn (fun x s => T.Pt s) T.Pub →
+          TypedOracleCompiler.Compile.Batch.Cms.NoRepeat T.Pub →
+            (∀ (d : T.D) (s : List Bool), T.Pt s → TypedOracleCompiler.Compile.Batch.Cms.IsOther (T.m d) s) →
+              (∀ (d d' : T.D),
+                  Eq (T.part d) (T.part d') →
+                    Eq
+                      (Rom.extractorOverOneHashFunction (T.m d)
+                          (TypedOracleCompiler.Compile.Batch.Cms.indexExtractorAtRootAndOutOfDomainSample
+                            R.queryLayout)).Ei
+                      (Rom.extractorOverOneHashFunction (T.m d')
+                          (TypedOracleCompiler.Compile.Batch.Cms.indexExtractorAtRootAndOutOfDomainSample
+                            R.queryLayout)).Ei) →
+                ZKCP.CodeIsOneToOne T.encT →
+                  ∀ {Form NW PP CR : Type} (pp : NW → PP)
+                    (nt : NW → List VerifiableInference.Token → Option VerifiableInference.Token)
+                    (smp : VerifiableInference.RandomizedAlgorithm CR)
+                    (cm : NW → CR → VerifiableInference.DeterministicAlgorithm VerifiableInference.Commitment)
+                    (pr :
+                      NW →
+                        CR →
+                          List VerifiableInference.Token →
+                            List VerifiableInference.Token → VerifiableInference.RandomizedAlgorithm Form)
+                    (verify' :
+                      VerifiableInference.Commitment →
+                        List VerifiableInference.Token →
+                          List VerifiableInference.Token → Form → VerifiableInference.DeterministicAlgorithm Bool)
+                    (readD : VerifiableInference.DeterministicAlgorithm T.D),
+                    (∀ (hash : VerifiableInference.Hash),
+                        Eq (VerifiableInference.DeterministicAlgorithm.evaluate hash readD)
+                          (Rom.OComp.det (fun x => hash) T.Pub)) →
+                      ∀
+                        (parse :
+                          T.D →
+                            List VerifiableInference.Token →
+                              List VerifiableInference.Token →
+                                Form →
+                                  VerifiableInference.DeterministicAlgorithm
+                                    (Prod (List VerifiableInference.Token)
+                                      (Prod (TypedOracleCompiler.Compile.Batch.Cms.KeyRoot 256 R.protocol)
+                                        (TypedOracleCompiler.Compile.Batch.Cms.OfflineLinkOnlineProof 256 R.protocol
+                                          R.offlineRoundSplits R.linkRoundSplits))))
+                        (n : Nat),
+                        (∀ (prompt output : List VerifiableInference.Token) (form : Form),
+                            (T.readerBehindReadingAndParser readD parse prompt output form).toRandomized.QueryBound n) →
+                          (∀ (hash : VerifiableInference.Hash) (commitment : VerifiableInference.Commitment)
+                              (prompt output : List VerifiableInference.Token) (form : Form),
+                              Eq
+                                  (VerifiableInference.DeterministicAlgorithm.evaluate hash
+                                    (verify' commitment prompt output form))
+                                  Bool.true →
+                                Eq
+                                  (VerifiableInference.DeterministicAlgorithm.evaluate hash
+                                    (T.verifyBehindReadingAndParser readD parse commitment prompt output form))
+                                  Bool.true) →
+                            ∀ (φ : R.Index → NW)
+                              (newClaim : NW → List VerifiableInference.Token → List VerifiableInference.Token → Prop),
+                              (∀ (i : R.Index) (prompt output : List VerifiableInference.Token),
+                                  claim i prompt output → newClaim (φ i) prompt output) →
+                                VerifiableInference.SoundForWith
+                                  { Weights := NW, PublicParameters := PP, publicParameters := pp,
+                                    CommitmentRandomness := CR, Proof := Form, nextToken := nt,
+                                    sampleCommitmentRandomness := smp, commit := cm, prove := pr, verify := verify' }
+                                  (fun commitment queryLog => Option.map φ (T.extractor commitment queryLog)) newClaim
+                                  fun t =>
+                                  instHAdd.hAdd
+                                    (TypedOracleCompiler.Compile.Batch.Cms.soundnessBoundOverTypedOracles R.queryLayout
+                                      εs (instHAdd.hAdd t n) 0)
+                                    (VerifiableInference.OnPublicFiles.epsCode (instHAdd.hAdd t n))
+=== VerifierAndGoals.filesRead
+in full: 3257b5bcb68d4726528974549ac3750bc9042e5f8380d66c106c6cdba95652e0
+VerifierAndGoals.FilesRead
+=== PV.Ride.verdictThe_is_theDescription
+in full: 9c2d84823ee19f64c51352091b85a4aaae4167ec7492bcddeb2aef9bfe41618b
+∀ (Z : VerifierAndGoals.PublicFiles) (O : ByteArray → ByteArray) (B : FlashProve.FormBytes)
+  (commitment : VerifiableInference.Commitment) (prompt output : List VerifiableInference.Token) (b : Bool),
+  Eq (PV.Ride.verdictThe Z O B (PV.Ride.rideOf PV.Ride.letsThe Z O B commitment prompt output)) (Option.some b) →
+    Eq b
+      (VerifiableInference.DeterministicAlgorithm.evaluate (VerifiableInference.OnPublicFiles.hashOf O)
+        (VerifierAndGoals.verify (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+          ((VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription).parse Z) commitment prompt output B))
+=== AtPublicFiles.AtFiles.tables_own_named
+in full: 9c0a4897dfe572d6862b35f18038431344563e1f0bee32d3dff3240c33fad588
+∀ (Z : VerifierAndGoals.PublicFiles),
+  VerifierAndGoals.NamedFiles Z →
+    ∀ (B : Hiop.BoundsR),
+      B.Fits 44040191 62 62 62 64 →
+        ∀ (i i' : AtPublicFiles.AtFiles.FullSizeMatrix) (α : Type)
+          (s₀ : (AtPublicFiles.AtFiles.objOwn Z).OutOfDomainSeed)
+          (E : (AtPublicFiles.AtFiles.objOwn Z).Rec → Hiop.Seeded.EnvS (AtPublicFiles.AtFiles.objOwn Z) α),
+          (∀ (a : (AtPublicFiles.AtFiles.objOwn Z).Rec),
+              Hiop.Seeded.EnvS.Adm B (fun x => True) (fun x => True) (E a) 0 Hiop.UsedR.zero) →
+            Eq
+              ((Hiop.Seeded.realHostS (AtPublicFiles.AtFiles.objOwn Z)
+                    (Hiop.Seeded.ProversS.own (AtPublicFiles.AtFiles.objOwn Z)) i).view
+                s₀ E)
+              ((Hiop.Seeded.realHostS (AtPublicFiles.AtFiles.objOwn Z)
+                    (Hiop.Seeded.ProversS.own (AtPublicFiles.AtFiles.objOwn Z)) i').view
+                s₀ E)
+=== AtPublicFiles.Premises.noProverSide_description
+in full: 390ce9d882d30d38c476634b113265c85e11c69d6d96f1af910f93dda6158d0f
+∀ (Z : VerifierAndGoals.PublicFiles),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    ∀ (M s1 : Nat),
+      instLENat.le (instHAdd.hAdd M 1) 710324 →
+        instLENat.le s1 688127 →
+          ∀ (zT zL zO hT hL hO : ENNReal) (capT capL capB : Nat → Nat) (c : VerifiableInference.Digest)
+            (m : (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription).More),
+            AtPublicFiles.Premises.NoProverSide
+              ((VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription).input Z c m).queryLayout
+              ((VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription).input Z c m).seedQueries
+              ((VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription).input Z c m).answerCode
+              (fun x => True) (AtPublicFiles.Premises.indexPrivacyNumbers s1 zT zL zO hT hL hO) M capT capL capB
+=== OnBytes.WholeKey.wholeKeyPrivacy
+in full: 07757b44adce15a2ff42f3b536b1c8a1f962b5eb8876de83e323da673f54556b
+OnBytes.WholeKey.Spec.wholeKeyPrivacy
+=== VerifierAndGoals.AtTheName.indexBinding_of_verify_at
+in full: d854a87a04a9e0675065a007078f41a84175cf9e747b8a2654bb903773de1e88
+∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      Eq pp.pol Inst.Model.AcceptancePolicy.exact →
+        ZKCP.HasIndexBinding
+          (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+              (VerifierAndGoals.settingsOfRead pp)).uploadRelation
+          (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+              (VerifierAndGoals.settingsOfRead pp)).uploadArgument
+          fun tC tP => VerifierAndGoals.soundnessErrorInQueries (instHAdd.hAdd tC tP) 1
+=== VerifierAndGoals.AtTheName.indexBindingWith_of_verify_at
+in full: 9abbbc796977ae8a8fb6f64aa63890ce08f693a9647e1ea0453a0b923c6d5eec
+∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      Eq pp.pol Inst.Model.AcceptancePolicy.exact →
+        ZKCP.HasIndexBindingWith
+          (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+              (VerifierAndGoals.settingsOfRead pp)).uploadRelation
+          (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+              (VerifierAndGoals.settingsOfRead pp)).uploadArgument
+          {
+            Ei :=
+              (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription).extractor Z
+                (VerifierAndGoals.settingsOfRead pp),
+            Ew := fun x x_1 x_2 x_3 x_4 => Unit.unit }
+          fun tC tP => VerifierAndGoals.soundnessErrorInQueries (instHAdd.hAdd tC tP) 1
+=== VerifierAndGoals.AtTheName.indexBindingUnderPolicy_of_verify_at
+in full: 2c46d583f19bc22174ef1b02bf33d564cc1a7e58d9c85ad6235f2be115a940da
+∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      ZKCP.HasIndexBindingWith
+        (ZKCP.languageRelation fun weights x =>
+          Policy.MeetsPolicy (VerifierAndGoals.settingsOfRead pp) pp.pol weights x.fst x.snd)
+        (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+            (VerifierAndGoals.settingsOfRead pp)).uploadArgument
+        {
+          Ei :=
+            (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription).extractor Z
+              (VerifierAndGoals.settingsOfRead pp),
+          Ew := fun x x_1 x_2 x_3 x_4 => Unit.unit }
+        fun tC tP => VerifierAndGoals.soundnessErrorInQueries (instHAdd.hAdd tC tP) 1
+=== VerifierAndGoals.AtTheName.soundManyProofs_union_of_verify_at
+in full: ec92ddb4182aed60e2f43c4e0155675757c7a655451e1f7aec91998b1fb80d19
+∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      Eq pp.pol Inst.Model.AcceptancePolicy.exact →
+        VerifiableInference.SoundManyProofs
+          (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+            (VerifierAndGoals.settingsOfRead pp))
+          fun queries proofCount => instHMul.hMul proofCount.cast (VerifierAndGoals.soundnessErrorInQueries queries 1)
+=== VerifierAndGoals.AtTheName.sessionAugmented_union_of_verify_at
+in full: f82e1e2f98e237156add364bc7c2885de9295654a151d0e4049a527cd45cda9d
+∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      Eq pp.pol Inst.Model.AcceptancePolicy.exact →
+        ZKCP.HasSessionAugmentedBinding
+          (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+              (VerifierAndGoals.settingsOfRead pp)).uploadRelation
+          (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+              (VerifierAndGoals.settingsOfRead pp)).uploadArgument
+          fun tC tP N => instHMul.hMul N.cast (VerifierAndGoals.soundnessErrorInQueries (instHAdd.hAdd tC tP) 1)
+=== VerifierAndGoals.AtTheName.noTwoAnswers_of_verify_at
+in full: 8f397b4bdfdf6d89fb2827d880ea6397b4bda347cd68b7553a7f4ef5c9bde035
+∀ (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      Eq pp.pol Inst.Model.AcceptancePolicy.exact →
+        ZKCP.NoTwoAnswers
+          (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription) Z
+              (VerifierAndGoals.settingsOfRead pp)).uploadArgument
+          (fun x => { fst := x.fst, snd := x.snd.length }) (fun x => x.snd) fun tC tP N =>
+          instHMul.hMul N.cast (VerifierAndGoals.soundnessErrorInQueries (instHAdd.hAdd tC tP) 1)
+=== LPFGuard.strike_verdict
+in full: b66c62b461c2b7ac2751dece8c25f2959296b159f6bd1e3314ff39cb4d247a7b
+LPFGuard.Spec.strike_verdict
+=== AtFullSide.Top.theLive_zFull
+in full: f2750a3b79687a8cba30139bbd892e109209122598950ef0b702131968e916f2
+Eq (FlashProve.protocolDataWellFormed (VerifierAndGoals.asDescriptionFiles VerifierAndGoals.storedPublicFiles))
+  Bool.true
+=== AtFullSide.Top.tests_zFull
+in full: 0a09dedd361211dddb21ee1a5a8d1492de157064d862fd233222e21f7ae5ec0d
+And (Eq (VerifierAndGoals.InScope VerifierAndGoals.storedPublicFiles) Bool.true)
+  (And
+    (Eq (FlashProve.protocolDataWellFormed (VerifierAndGoals.asDescriptionFiles VerifierAndGoals.storedPublicFiles))
+      Bool.true)
+    (Eq (FlashProve.linkDecisionAtFiles (VerifierAndGoals.asDescriptionFiles VerifierAndGoals.storedPublicFiles))
+      fun rr =>
+      Desc.K15.decDescFullV Desc.K15.frP (Desc.K15.linkDeclaredRounds Desc.K15.frP)
+        (Desc.K15.linkRoundsMatchPlan Desc.K15.frP OnBytes.Params.recordPlan) (OnBytes.Flat.recX rr)))
+=== AtFullSide.Top.headMember_zFull
+in full: 5af97a04b9b3ce3c8fe43f1032d6fea2e2c6f655abae43bb1c5abfa8c12fecd4
+And
+  (Eq (FlashProve.protocolDataWellFormed (VerifierAndGoals.asDescriptionFiles VerifierAndGoals.storedPublicFiles))
+    Bool.true)
+  (And (P5J.rowsRead VerifierAndGoals.storedPublicFiles)
+    (Exists fun Zp =>
+      Exists fun Np =>
+        Exists fun cF =>
+          Exists fun x =>
+            P5J.AtMgA OnBytes.secondHashFunction VerifierAndGoals.storedPublicFiles
+              (VerifierAndGoals.AtTheName.dpZ VerifierAndGoals.storedPublicFiles)
+              (FlashProve.theProofRun (VerifierAndGoals.asDescriptionFiles VerifierAndGoals.storedPublicFiles)) Zp Np cF
+              x))
+=== OnBytes.K.Arm.encId_oneToOne
+in full: 148844dd704b6138cf7446bf0875b69441b989bcc07756b8ab788d5dc0c826fb
+∀ (G : OnBytes.Tie.EntryGround) {I' X' RI : Type} [inst : Fintype RI] [inst_1 : Nonempty RI] {a : Nat}
+  {Q :
+    Iop.InteractiveOracleProof
+      (Prod
+        (Prod (Fin G.q.link.table.answers → Prod (Fin G.q.link.table.cubeBits → OnBytes.Slice.GE) OnBytes.Slice.NZ)
+          (Prod (Fin G.q.link.table.v → Bool) (Fin G.q.link.table.answers) → OnBytes.Slice.GE))
+        (Prod (Fin G.q.link.table.answers → Prod (Fin G.q.link.table.cubeBits → OnBytes.Slice.GE) OnBytes.Slice.NZ)
+          (Prod (Fin G.q.link.table.v → Bool) (Fin G.q.link.table.answers) → OnBytes.Slice.GE)))
+      (Iop.twoExternalStrings (instHPow.hPow 2 a) Run.PQ.SgX)}
+  (T :
+    OnBytes.RunA.RestR I' X' RI
+      (Fin G.q.link.table.answers → Prod (Fin G.q.link.table.cubeBits → OnBytes.Slice.GE) OnBytes.Slice.NZ)
+      (Prod (Fin G.q.link.table.v → Bool) (Fin G.q.link.table.answers) → OnBytes.Slice.GE) a Q),
+  ZKCP.CodeIsOneToOne (OnBytes.K.Arm.encId G T)
+=== Bind.Cpp.extractsCommitted
+in full: c7453dd8334f6a3cec3e0b9fcd40c38843481e7cf88c39560c8aa84febd4a4ca
+∀
+  (prove :
+    VerifierAndGoals.PublicFiles →
+      (s : IntegerTransformer.Settings) →
+        VerifiableInference.ModelWeights s →
+          Bind.Cpp.Rand →
+            List VerifiableInference.Token →
+              List VerifiableInference.Token →
+                VerifiableInference.RandomizedAlgorithm FlashProve.flashProveDescription.Form)
+  (g : Bind.Twin.Shape → Bind.Cpp.Seed → VerifiableInference.Digest → VerifiableInference.Digest → Bind.Cpp.Coins)
+  (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      Eq (FlashProve.protocolDataWellFormed (VerifierAndGoals.asDescriptionFiles Z)) Bool.true →
+        VerifiableInference.ExtractsCommittedWeights
+          (VerifierAndGoals.systemOfRecord
+            (VerifierAndGoals.atSecondHashFunction (Bind.Cpp.theCpp (Bind.Cpp.theTwin g) prove)) Z
+            (VerifierAndGoals.settingsOfRead pp))
+          ((VerifierAndGoals.atSecondHashFunction (Bind.Cpp.theCpp (Bind.Cpp.theTwin g) prove)).extractor Z
+            (VerifierAndGoals.settingsOfRead pp))
+          (VerifierAndGoals.bindingErrorInQueries (instHAdd.hAdd Bind.Cpp.twinBudget 2))
+=== Bind.Cpp.bindsAt
+in full: 44bc28160878bbc2483e629d1ce510cc80fd6e726bf95ae819b8705b8f9ca164
+∀
+  (prove :
+    VerifierAndGoals.PublicFiles →
+      (s : IntegerTransformer.Settings) →
+        VerifiableInference.ModelWeights s →
+          Bind.Cpp.Rand →
+            List VerifiableInference.Token →
+              List VerifiableInference.Token →
+                VerifiableInference.RandomizedAlgorithm FlashProve.flashProveDescription.Form)
+  (g : Bind.Twin.Shape → Bind.Cpp.Seed → VerifiableInference.Digest → VerifiableInference.Digest → Bind.Cpp.Coins)
+  (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      Eq (FlashProve.protocolDataWellFormed (VerifierAndGoals.asDescriptionFiles Z)) Bool.true →
+        And
+          (∀ (w : VerifiableInference.ModelWeights (VerifierAndGoals.settingsOfRead pp))
+            (ρ : (VerifierAndGoals.atSecondHashFunction (Bind.Cpp.theCpp (Bind.Cpp.theTwin g) prove)).Rand),
+            ((VerifierAndGoals.atSecondHashFunction (Bind.Cpp.theCpp (Bind.Cpp.theTwin g) prove)).commit Z
+                    (VerifierAndGoals.settingsOfRead pp) w ρ).toRandomized.QueryBound
+              VerifierAndGoals.honestBudget)
+          (VerifiableInference.BindsWith
+            (VerifierAndGoals.systemOfRecord
+              (VerifierAndGoals.atSecondHashFunction (Bind.Cpp.theCpp (Bind.Cpp.theTwin g) prove)) Z
+              (VerifierAndGoals.settingsOfRead pp))
+            ((VerifierAndGoals.atSecondHashFunction (Bind.Cpp.theCpp (Bind.Cpp.theTwin g) prove)).extractor Z
+              (VerifierAndGoals.settingsOfRead pp))
+            VerifierAndGoals.bindingErrorInQueries)
+=== Bind.Cpp.soundAtCommitted_own
+in full: 65714395561534f927087fc65f9064effbb1552d0b357302a79e90bb99caad95
+∀
+  (prove :
+    VerifierAndGoals.PublicFiles →
+      (s : IntegerTransformer.Settings) →
+        VerifiableInference.ModelWeights s →
+          Bind.Cpp.Rand →
+            List VerifiableInference.Token →
+              List VerifiableInference.Token →
+                VerifiableInference.RandomizedAlgorithm FlashProve.flashProveDescription.Form)
+  (g : Bind.Twin.Shape → Bind.Cpp.Seed → VerifiableInference.Digest → VerifiableInference.Digest → Bind.Cpp.Coins)
+  (Z : VerifierAndGoals.PublicFiles) (pp : Inst.Model.ScalesAndPolicy),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    Eq (VerifierAndGoals.readFiles Z) (Except.ok pp) →
+      ∀ (w : VerifiableInference.ModelWeights (VerifierAndGoals.settingsOfRead pp)) (p : Nat)
+        (prover :
+          VerifiableInference.Commitment →
+            Bind.Cpp.Rand →
+              VerifiableInference.RandomizedAlgorithm
+                (Prod (List VerifiableInference.Token)
+                  (Prod (List VerifiableInference.Token) FlashProve.flashProveDescription.Form))),
+        (∀ (commitment : VerifiableInference.Commitment) (ρ : Bind.Cpp.Rand), (prover commitment ρ).QueryBound p) →
+          ENNReal.instPartialOrder.le
+            (VerifiableInference.Prob
+              (do
+                let ρ ← (VerifierAndGoals.atSecondHashFunction (Bind.Cpp.theCpp (Bind.Cpp.theTwin g) prove)).sample
+                let commitment ←
+                  ((VerifierAndGoals.atSecondHashFunction (Bind.Cpp.theCpp (Bind.Cpp.theTwin g) prove)).commit Z
+                        (VerifierAndGoals.settingsOfRead pp) w ρ).toRandomized
+                let __discr ← prover commitment ρ
+                Bind.Cpp.soundAtCommitted_own.match_1
+                    (fun __discr =>
+                      VerifiableInference.RandomizedAlgorithm
+                        (Prod (List VerifiableInference.Token) (Prod (List VerifiableInference.Token) Bool)))
+                    __discr fun prompt output form => do
+                    let accepted ←
+                      (VerifierAndGoals.verify
+                            (VerifierAndGoals.atSecondHashFunction (Bind.Cpp.theCpp (Bind.Cpp.theTwin g) prove)) Z
+                            ((VerifierAndGoals.atSecondHashFunction (Bind.Cpp.theCpp (Bind.Cpp.theTwin g) prove)).parse
+                              Z)
+                            commitment prompt output form).toRandomized
+                    VerifiableInference.instMonadRandomizedAlgorithm.pure
+                        { fst := prompt, snd := { fst := output, snd := accepted } })
+              (setOf fun x =>
+                Bind.Cpp.soundAtCommitted_own.match_3 (fun x => Prop) x fun prompt output accepted =>
+                  And (Eq accepted Bool.true)
+                    (Not (Policy.MeetsPolicy (VerifierAndGoals.settingsOfRead pp) pp.pol w prompt output))))
+            (instHAdd.hAdd
+              (VerifierAndGoals.soundnessErrorInQueries (instHAdd.hAdd (instHAdd.hAdd Bind.Cpp.twinBudget 2) p) 1)
+              (VerifierAndGoals.bindingErrorInQueries (instHAdd.hAdd Bind.Cpp.twinBudget 2)))
+=== OnBytes.formatHashFastForm_eq_formatHash
+in full: 6d892aada61191d8dfdc78ea28849203f0f1c00c024ad2fac5e1545399638ef3
+Eq OnBytes.formatHashFastForm Fmt.formatHash
+=== PV.Program.verdictOf_eq
+in full: cb220be8e81a61b75396268127f4ce9e11a9835d35884029e91fd0fd47b37740
+∀ (g : PV.Program.Given) (c : PV.Program.Claim),
+  Eq (PV.Program.claimOf g) (Option.some c) → Eq (PV.Program.verdictOf g) (Option.some (PV.Program.verifyValue g c))
+=== PV.Program.verdictOf_is_verify
+in full: 9e244d0e07384401e7dadf9415bae59f206c87c773e2e0f6e7cbf89db48f85a0
+∀ (g : PV.Program.Given) (b : Bool),
+  Eq (PV.Program.verdictOf g) (Option.some b) →
+    Exists fun c => And (Eq (PV.Program.claimOf g) (Option.some c)) (Eq b (PV.Program.verifyValue g c))
+=== PV.Program.verdictAt_eq
+in full: 9fcf6f92538b354b06a5411fe3b2a7c37a5cecdf2a731fe81e57a5c0fca47764
+∀ (g : PV.Program.Given) (c : PV.Program.Claim),
+  Eq (PV.Program.verdictAt g c (PV.Program.stepsOf g c)) (Option.some (PV.Program.verifyValue g c))
+=== PV.Program.verdictOf_map
+in full: 7535bd13d4c1b3dd8a7502acabd3d048796021fda6e4848dc28366db7b9401fd
+∀ (g : PV.Program.Given), Eq (PV.Program.verdictOf g) (Option.map (PV.Program.verifyValue g) (PV.Program.claimOf g))
+=== AtFull.Top.sound_zFull
+in full: e9af8dd9eeb9cff0d1d22528284a2c9909a3681bca03481ace648f499b32dd93
+Exists fun pp =>
+  And (Eq (VerifierAndGoals.readFiles VerifierAndGoals.storedPublicFiles) (Except.ok pp))
+    (And (Eq pp.pol Inst.Model.AcceptancePolicy.exact)
+      (VerifiableInference.Sound
+        (VerifierAndGoals.systemOfRecord (VerifierAndGoals.atSecondHashFunction VerifierAndGoals.theDescription)
+          VerifierAndGoals.storedPublicFiles (VerifierAndGoals.settingsOfRead pp))
+        fun t => VerifierAndGoals.soundnessErrorInQueries t 1))
+=== VerifiableInference.modelNeverFails_of_passesWorstCaseCheck
+in full: a79bfd663ea0a150fc0c3eb05caf87860b8e2c275544826a0b2a4909e39ad6f4
+∀ (settings : IntegerTransformer.Settings) (weights : VerifiableInference.ModelWeights settings),
+  VerifiableInference.PassesWorstCaseCheck settings weights → VerifiableInference.ModelNeverFails settings weights
+=== VerifiableInference.exists_greedyOutput
+in full: 315c65c4eabc7e0b9fa95cefc1a05f4759c1038d8002fef84d762eb8df5f1b32
+∀ (settings : IntegerTransformer.Settings) (weights : VerifiableInference.ModelWeights settings),
+  VerifiableInference.RangeConditionsNeverFail settings weights →
+    ∀ (prompt : List Nat) (count : Nat),
+      Ne prompt List.nil →
+        (∀ (token : Nat), List.instMembership.mem prompt token → instLTNat.lt token settings.vocabulary) →
+          instLTNat.lt 0 count →
+            instLENat.le (instHAdd.hAdd prompt.length count) 1025 →
+              Exists fun output =>
+                And (Eq output.length count)
+                  (And (∀ (token : Nat), List.instMembership.mem output token → instLTNat.lt token settings.vocabulary)
+                    (∀ (position : Nat) (inOutput : instLTNat.lt position output.length),
+                      Eq
+                        (VerifiableInference.modelNextToken settings weights
+                          (instHAppendOfAppend.hAppend prompt (List.take position output)))
+                        (Option.some (List.instGetElemNatLtLength.getElem output position inOutput))))
+=== VerifiableInference.greedyOutput_unique
+in full: 7212da663e6ca799f631a447f1366bb1589e0bf38241bd7c8f5b186d21fa990f
+∀ (settings : IntegerTransformer.Settings) (weights : VerifiableInference.ModelWeights settings)
+  (prompt first second : List Nat),
+  Eq first.length second.length →
+    (∀ (position : Nat) (inOutput : instLTNat.lt position first.length),
+        Eq
+          (VerifiableInference.modelNextToken settings weights
+            (instHAppendOfAppend.hAppend prompt (List.take position first)))
+          (Option.some (List.instGetElemNatLtLength.getElem first position inOutput))) →
+      (∀ (position : Nat) (inOutput : instLTNat.lt position second.length),
+          Eq
+            (VerifiableInference.modelNextToken settings weights
+              (instHAppendOfAppend.hAppend prompt (List.take position second)))
+            (Option.some (List.instGetElemNatLtLength.getElem second position inOutput))) →
+        Eq first second
+=== VerifiableInference.not_passesWorstCaseCheck_atHaltingWeights
+in full: 47b23a25f3bac6ecdfccfdbcde4e54770f2dc1fc3ab2c751f77b68edb152364a
+Not (VerifiableInference.PassesWorstCaseCheck VerifiableInference.referenceSettings VerifiableInference.haltingWeights)
+=== VerifiableInference.Bounds.exists_passesWorstCaseCheck
+in full: 4df178516e761ce797591de88c201fad5718067eb6d68fcb731939787fe6d4de
+∀ (settings : IntegerTransformer.Settings),
+  Eq (VerifiableInference.settingsAreValid settings) Bool.true →
+    Exists fun weights => VerifiableInference.PassesWorstCaseCheck settings weights
+=== VerifiableInference.AtEveryRequest.requestLabel_eq_failed_iff
+in full: 9154b38527cb488407399b28a80595e16bc83580fb2974854d2a96c650fcc83e
+∀ (settings : IntegerTransformer.Settings) (weights : VerifiableInference.ModelWeights settings)
+  (request : VerifiableInference.AtEveryRequest.Request),
+  VerifiableInference.RequestForm settings request.fst request.snd →
+    Iff
+      (Eq (VerifiableInference.AtEveryRequest.requestLabel settings weights request)
+        VerifiableInference.AtEveryRequest.Label.failed)
+      (Eq (VerifiableInference.requestResult settings weights request.fst request.snd) Option.none)
+=== VerifiableInference.AtEveryRequest.requestLabel_eq_otherTokens_iff
+in full: 4fa750f61d37079ca513372d25a6fd6a219aba72c71559f1f9a84d5be6a8538f
+∀ (settings : IntegerTransformer.Settings) (weights : VerifiableInference.ModelWeights settings)
+  (request : VerifiableInference.AtEveryRequest.Request),
+  VerifiableInference.RequestForm settings request.fst request.snd →
+    Iff
+      (Eq (VerifiableInference.AtEveryRequest.requestLabel settings weights request)
+        VerifiableInference.AtEveryRequest.Label.otherTokens)
+      (Exists fun tokens =>
+        And (Eq (VerifiableInference.requestResult settings weights request.fst request.snd) (Option.some tokens))
+          (Ne tokens request.snd))
+=== VerifiableInference.AtEveryRequest.requestLabel_eq_served_iff
+in full: 2d9112f2c27d982cddde41e33459d70c69a7239a1fa86f4d2020441f9f1f079c
+∀ (settings : IntegerTransformer.Settings) (weights : VerifiableInference.ModelWeights settings)
+  (request : VerifiableInference.AtEveryRequest.Request),
+  Iff
+    (Eq (VerifiableInference.AtEveryRequest.requestLabel settings weights request)
+      VerifiableInference.AtEveryRequest.Label.served)
+    (Eq (VerifiableInference.AtEveryRequest.requestOutcome settings weights request)
+      VerifiableInference.AtEveryRequest.Outcome.served)
+=== VerifiableInference.AtEveryRequest.served_iff_canServe
+in full: 82d8505d9077f2946ca3573be3d444a47d137e7bf3ee73baf5ac4f10678b365a
+∀ {settings : IntegerTransformer.Settings},
+  Eq (VerifiableInference.settingsAreValid settings) Bool.true →
+    ∀ (weights : VerifiableInference.ModelWeights settings) (request : VerifiableInference.AtEveryRequest.Request),
+      Iff
+        (Eq (VerifiableInference.AtEveryRequest.requestOutcome settings weights request)
+          VerifiableInference.AtEveryRequest.Outcome.served)
+        (And (VerifiableInference.CanServe settings weights request.fst request.snd)
+          (∀ (position : Nat) (inOutput : instLTNat.lt position request.snd.length),
+            Eq
+              (VerifiableInference.modelNextToken settings weights
+                (instHAppendOfAppend.hAppend request.fst (List.take position request.snd)))
+              (Option.some (List.instGetElemNatLtLength.getElem request.snd position inOutput))))
+=== VerifiableInference.AtEveryRequest.toldWeightsSaysNothing
+in full: 983077157d8a347689a8e9c04ef74c80541da7ead327785f3c509167b168b8ab
+∀ (system : VerifiableInference.ArgumentSystem) (hypothesis : VerifiableInference.AtEveryRequest.Request → Prop)
+  (error : Nat → Nat → ENNReal),
+  VerifiableInference.AtEveryRequest.ZeroKnowledgeWhere system hypothesis (fun x x_1 => Unit.unit) error →
+    VerifiableInference.AtEveryRequest.ZeroKnowledgeShownWhere system hypothesis (fun weights x => weights) error
+=== VerifiableInference.Compilation.completeOnServedRequests_refuse_iff
+in full: 150868e59f68523ae2f20d7b9e7d124ad62ba7b343bd5f898088da1342248d1d
+∀ (Z : VerifierAndGoals.PublicFiles) {pp : Inst.Model.ScalesAndPolicy}
+  (hr : Eq (VerifierAndGoals.readFiles Z) (Except.ok pp))
+  (Hs : VerifiableInference.Compilation.HonestProvers (AtPublicFiles.AtFiles.protocolAtFiles Z)),
+  Iff (AtPublicFiles.AtFiles.CompleteOnServedRequests Z hr (VerifiableInference.Compilation.proversAtFiles Z hr Hs))
+    (AtPublicFiles.AtFiles.CompleteOnServedRequests Z hr Hs)
+=== VerifiableInference.canServe_iff_requestResult
+in full: 491a84d4bb421a7f4c38adbd7e78ffc29ed88b32301c63f711e6901b8361ac63
+∀ (settings : IntegerTransformer.Settings) (weights : VerifiableInference.ModelWeights settings)
+  (prompt output : List Nat),
+  Iff (VerifiableInference.CanServe settings weights prompt output)
+    (And
+      (∀ (token : Nat),
+        List.instMembership.mem (instHAppendOfAppend.hAppend prompt output) token →
+          instLTNat.lt token settings.vocabulary)
+      (And (Ne output List.nil)
+        (Eq (VerifiableInference.requestResult settings weights prompt output).isSome Bool.true)))
+=== VerifiableInference.modelNeverFails_of_passesSomeWorstCaseCheck
+in full: e6c22059dcbb5841affb0ec1be7662156cfd5001140a82a63031868f4ed189d2
+∀ (settings : IntegerTransformer.Settings) (weights : VerifiableInference.ModelWeights settings),
+  VerifiableInference.PassesSomeWorstCaseCheck settings weights → VerifiableInference.ModelNeverFails settings weights
+=== VerifiableInference.passesSomeWorstCaseCheck_atReferenceSettings
+in full: bc109f1204c08a59cf9600b559e0ddef1f97ef93d968cf20f0fb6157f3f6404e
+∀ (weights : VerifiableInference.ModelWeights VerifiableInference.referenceSettings),
+  (∀ (layer : Nat),
+      instLTNat.lt layer VerifiableInference.referenceSettings.layers →
+        IntegerTransformer.Bounds.LayerWithin 800 (weights.val.perLayer.entry layer)) →
+    VerifiableInference.PassesSomeWorstCaseCheck VerifiableInference.referenceSettings weights
+=== VerifiableInference.AtEveryRequest.wellFormed_and_result_iff
+in full: 21ef9efd10b70e349c5ba23212c10a1c7f2f8f02a36afca899094b9bfb9a932b
+∀ {settings : IntegerTransformer.Settings},
+  Eq (VerifiableInference.settingsAreValid settings) Bool.true →
+    ∀ (weights : VerifiableInference.ModelWeights settings) (prompt output : List VerifiableInference.Token),
+      Iff
+        (And (VerifiableInference.AtEveryRequest.WellFormedRequest settings { fst := prompt, snd := output })
+          (Eq (VerifiableInference.AtEveryRequest.modelResult settings weights { fst := prompt, snd := output })
+            (Option.some output)))
+        (And (VerifiableInference.CanServe settings weights prompt output)
+          (∀ (position : Nat) (inOutput : instLTNat.lt position output.length),
+            Eq
+              (VerifiableInference.modelNextToken settings weights
+                (instHAppendOfAppend.hAppend prompt (List.take position output)))
+              (Option.some (List.instGetElemNatLtLength.getElem output position inOutput))))
+=== VerifiableInference.AtEveryRequest.zeroKnowledgeFollowsFromOn
+in full: 1c65bd9113a76c7ae73b313d080f0f2dd94131034356813f77368c01ed3b9ddf
+∀ (system : VerifiableInference.ArgumentSystem)
+  (outcome : system.Weights → VerifiableInference.AtEveryRequest.Request → VerifiableInference.AtEveryRequest.Outcome)
+  (noProof : system.Proof), VerifiableInference.AtEveryRequest.ZeroKnowledgeFollowsFromOn system outcome noProof
+=== VerifiableInference.Compilation.someRequestIsServed_holds
+in full: a252708f855add6f1b4f1365a8bbb638e52be416ea3cc4761327176e0fc8d655
+∀ (Z : VerifierAndGoals.PublicFiles),
+  Eq (VerifierAndGoals.InScope Z) Bool.true →
+    ∀ {pp : Inst.Model.ScalesAndPolicy} (hr : Eq (VerifierAndGoals.readFiles Z) (Except.ok pp)),
+      Exists fun i =>
+        Exists fun x =>
+          And (VerifiableInference.Compilation.rangeAtFiles i)
+            (AtPublicFiles.AtFiles.ServedRequest FlashProve.committerCoinCountLessOne Z hr i x)
+=== VerifiableInference.AtEveryRequest.bitOf_requestLabel
+in full: f3663b21e85c0f7262839f2ea4f82933a9b6745fe56248833e3f5924b4205c9b
+∀ (settings : IntegerTransformer.Settings) (weights : VerifiableInference.ModelWeights settings)
+  (request : VerifiableInference.AtEveryRequest.Request),
+  Eq
+    (VerifiableInference.AtEveryRequest.bitOf
+      (VerifiableInference.AtEveryRequest.requestLabel settings weights request))
+    (VerifiableInference.AtEveryRequest.requestOutcome settings weights request)
+=== VerifiableInference.result_of_own_output
+in full: e5cf132d20e0e6862146218ecc123a00d278a2f73b5dc99469163543f36cd7ff
+∀ {settings : IntegerTransformer.Settings},
+  Eq (VerifiableInference.settingsAreValid settings) Bool.true →
+    ∀ {weights : VerifiableInference.ModelWeights settings},
+      VerifiableInference.ModelNeverFails settings weights →
+        ∀ {prompt output : List Nat},
+          VerifiableInference.RequestForm settings prompt output →
+            VerifiableInference.IsTheModelsOwnOutput settings weights prompt output →
+              Eq (VerifiableInference.requestResult settings weights prompt output) (Option.some output)
+=== VerifiableInference.exists_greedyOutput_of_length
+in full: e046e05404322bd959e9e4391b7b5afe70ea6b03dc6784fb08ebe71721def397
+∀ (settings : IntegerTransformer.Settings) (weights : VerifiableInference.ModelWeights settings),
+  VerifiableInference.RangeConditionsNeverFail settings weights →
+    ∀ (prompt : List Nat) (count : Nat),
+      Ne prompt List.nil →
+        (∀ (token : Nat), List.instMembership.mem prompt token → instLTNat.lt token settings.vocabulary) →
+          instLENat.le (instHAdd.hAdd prompt.length count) 1025 →
+            Exists fun output =>
+              And (Eq output.length count)
+                (And (∀ (token : Nat), List.instMembership.mem output token → instLTNat.lt token settings.vocabulary)
+                  (∀ (position : Nat) (inOutput : instLTNat.lt position output.length),
+                    Eq
+                      (VerifiableInference.modelNextToken settings weights
+                        (instHAppendOfAppend.hAppend prompt (List.take position output)))
+                      (Option.some (List.instGetElemNatLtLength.getElem output position inOutput))))
+=== VerifiableInference.Compilation.compiled_complete_atEveryCoin_holds
+in full: 74ade84ab5a17bef07a809a89a5d378599add5ea4c1c0a2af2f2210cddb91379
+VerifiableInference.Compilation.Spec.compiled_complete_atEveryCoin
+=== VerifiableInference.sound
+in full: 661ebbdb689e727a01ed1f48d5263c7c6f86c6cbd862de53608dbcfcc9283e79
+∀ (setup : VerifiableInference.PublicSetup),
+  VerifiableInference.Sound (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup))
+    VerifiableInference.Compilation.finalSoundnessError
+=== VerifiableInference.soundAndBinding
+in full: f6cf6c43dad04c8c54ec48805b58144fdd4693caa393487627b0ea757b3fb22b
+∀ (setup : VerifiableInference.PublicSetup),
+  VerifiableInference.SoundAndBinding (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup))
+    VerifiableInference.Compilation.finalBindingError
+=== VerifiableInference.completeOnCanServe
+in full: ba5548f931de320ff2cfc720fbb056486c9b627efcf307fc3986cc73d1c6126e
+∀ (setup : VerifiableInference.PublicSetup),
+  VerifiableInference.CompleteOn (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup))
+    (VerifiableInference.CanServe (VerifierAndGoals.settingsOfRead setup.readParameters))
+    VerifiableInference.Compilation.finalCompletenessError
+=== VerifiableInference.zeroKnowledgeOnCanServe
+in full: 8327d4bc1da20ea588dde756644fe2598fcb18f5724b67a98c01d20e55cf5c09
+∀ (setup : VerifiableInference.PublicSetup),
+  Exists fun error =>
+    And
+      (∀ (asked replies : Nat),
+        instLENat.le asked VerifiableInference.Compilation.finalVerifierQueries →
+          instLENat.le replies VerifiableInference.Compilation.finalReplyCount →
+            ENNReal.instPartialOrder.le (error asked replies) VerifiableInference.Compilation.finalZeroKnowledgeError)
+      (VerifiableInference.ZeroKnowledgeOn
+        (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup))
+        (VerifiableInference.CanServe (VerifierAndGoals.settingsOfRead setup.readParameters)) error)
+=== VerifiableInference.refusedHandsOutNoProof
+in full: 07e233d31934181c4e4cdacff237a9c08f8230b355ec3a17d9b1f374353955ef
+∀ (setup : VerifiableInference.PublicSetup),
+  VerifiableInference.AtEveryRequest.HandsOutNoProof
+    (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup))
+    (fun weights request =>
+      Eq
+        (VerifiableInference.AtEveryRequest.requestOutcome (VerifierAndGoals.settingsOfRead setup.readParameters)
+          weights request)
+        VerifiableInference.AtEveryRequest.Outcome.refused)
+    VerifiableInference.Compilation.isNoProof
+=== VerifiableInference.repliesFit
+in full: a407d06c0457c0ef56dacc241af93a48bde2e2090683c73814452d78bffa9b9c
+∀ (setup : VerifiableInference.PublicSetup),
+  And (instLENat.le VerifiableInference.Compilation.finalReplyCount (VerifiableInference.onlineRunsPerCopy setup))
+    (And
+      (∀ (reading : (VerifiableInference.flashProve setup).wiring.family.D),
+        VerifiableInference.Compilation.TableBudgetFits
+          ((VerifiableInference.flashProve setup).settings reading).furtherCopies
+          (VerifiableInference.onlineRunsPerCopy setup))
+      (VerifiableInference.AtEveryRequest.WithinBudget
+        (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup))
+        VerifiableInference.Compilation.honestQueryBudget))
+=== VerifiableInference.leanVerifier_eq
+in full: 574b35f1bd86d11c5b74caa1904e9fc78bc29c687d91e46aa86f963443911f6a
+∀ (setup : VerifiableInference.PublicSetup) (commitment : VerifiableInference.Commitment)
+  (prompt output : List VerifiableInference.Token) (form : FlashProve.flashProveDescription.Form),
+  Eq (VerifiableInference.leanVerifier setup commitment prompt output form)
+    (VerifiableInference.Compilation.finalVerifierProgram setup.files
+      (VerifierAndGoals.settingsOfRead setup.readParameters) commitment prompt output form)
+=== VerifiableInference.executableVerifier_eq_leanVerifier
+in full: 6457ba0d864f9253565ca39b6e11da02a4bc0c4bd6640e3e12035d435d3f36f1
+∀ (setup : VerifiableInference.PublicSetup) (commitment : VerifiableInference.Commitment)
+  (prompt output : List VerifiableInference.Token) (proof : FlashProve.FormBytes),
+  Eq (VerifiableInference.executableVerifier setup.files commitment prompt output proof)
+    (Option.some (VerifiableInference.leanVerifier setup commitment prompt output proof))
+=== VerifiableInference.verdictOf_eq_executableVerifier
+in full: 71f458cd5b43611fe95a4e22008a356996d8465727a47a0659bcc9f78afaa11a
+∀ (given : PV.Program.Given),
+  Eq (PV.Program.verdictOf given)
+    ((PV.Program.claimOf given).bind fun claim =>
+      VerifiableInference.executableVerifier (PV.Program.pubOf given) claim.commitment claim.prompt claim.output
+        (PV.Program.formOf given claim))
+=== VerifiableInference.verdictOf_eq_leanVerifier
+in full: 3e83e15745aeed70eb85127b0c2a98827211e802c71baef2df57c46d0b39bb0f
+∀ (setup : VerifiableInference.PublicSetup) (given : PV.Program.Given) (claim : PV.Program.Claim),
+  Eq (PV.Program.pubOf given) setup.files →
+    Eq (PV.Program.claimOf given) (Option.some claim) →
+      Eq (PV.Program.verdictOf given)
+        (Option.some
+          (VerifiableInference.leanVerifier setup claim.commitment claim.prompt claim.output
+            (PV.Program.formOf given claim)))
+=== VerifiableInference.executableVerifier_eq_leanVerifier_stored
+in full: 1a435d5ac9f34e7612b51c767a760371fdb3599b950472e1a2d9c25ec6f0d1aa
+∀ (commitment : VerifiableInference.Commitment) (prompt output : List VerifiableInference.Token)
+  (proof : FlashProve.FormBytes),
+  Eq (VerifiableInference.executableVerifier VerifierAndGoals.storedPublicFiles commitment prompt output proof)
+    (Option.some (VerifiableInference.leanVerifier VerifiableInference.storedSetup commitment prompt output proof))
+=== VerifiableInference.completeAtWellFormedRequests
+in full: 5287c2fa7a4978272e14dd861450df215e8c4e33ffd6cf62b6260da87b0f1f9f
+∀ (setup : VerifiableInference.PublicSetup),
+  VerifiableInference.AtEveryRequest.ProofAcceptedWhere
+    (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup))
+    (VerifiableInference.AtEveryRequest.WellFormedRequest (VerifierAndGoals.settingsOfRead setup.readParameters))
+    (VerifiableInference.AtEveryRequest.modelResult (VerifierAndGoals.settingsOfRead setup.readParameters))
+    VerifiableInference.Compilation.finalCompletenessError
+=== VerifiableInference.zeroKnowledgeBelow_of_onCanServe
+in full: 4fa29819a94e8675240dad878c494590b1518d6d93dc77664a9ea9e2b8594250
+∀ (honest : VerifiableInference.Compilation.HonestProversAndSettings) (files : VerifierAndGoals.PublicFiles)
+  (parameters : Inst.Model.ScalesAndPolicy),
+  VerifiableInference.Compilation.FilesTaken files parameters →
+    ∀ (bar : ENNReal),
+      (Exists fun error =>
+          And
+            (∀ (asked replies : Nat),
+              instLENat.le asked VerifiableInference.Compilation.finalVerifierQueries →
+                instLENat.le replies VerifiableInference.Compilation.finalReplyCount →
+                  ENNReal.instPartialOrder.le (error asked replies) bar)
+            (VerifiableInference.ZeroKnowledgeOn
+              (VerifiableInference.Compilation.finalSystem honest files (VerifierAndGoals.settingsOfRead parameters))
+              (VerifiableInference.CanServe (VerifierAndGoals.settingsOfRead parameters)) error)) →
+        VerifiableInference.AtEveryRequest.HandsOutNoProof
+            (VerifiableInference.Compilation.finalSystem honest files (VerifierAndGoals.settingsOfRead parameters))
+            (fun weights request =>
+              Eq
+                (VerifiableInference.AtEveryRequest.requestOutcome (VerifierAndGoals.settingsOfRead parameters) weights
+                  request)
+                VerifiableInference.AtEveryRequest.Outcome.refused)
+            VerifiableInference.Compilation.isNoProof →
+          VerifiableInference.AtEveryRequest.ZeroKnowledgeBelowWhere
+            (VerifiableInference.Compilation.finalSystem honest files (VerifierAndGoals.settingsOfRead parameters))
+            (fun x => True)
+            (VerifiableInference.AtEveryRequest.requestOutcome (VerifierAndGoals.settingsOfRead parameters))
+            VerifiableInference.Compilation.finalVerifierQueries VerifiableInference.Compilation.finalReplyCount bar
+=== VerifiableInference.zeroKnowledgeAtEveryRequest_of_lines
+in full: 6aba2a2e21894073a729cccdd34799b563f966c7db04618acdf43659910c77d2
+∀ (setup : VerifiableInference.PublicSetup),
+  (Exists fun error =>
+      And
+        (∀ (asked replies : Nat),
+          instLENat.le asked VerifiableInference.Compilation.finalVerifierQueries →
+            instLENat.le replies VerifiableInference.Compilation.finalReplyCount →
+              ENNReal.instPartialOrder.le (error asked replies) VerifiableInference.Compilation.finalZeroKnowledgeError)
+        (VerifiableInference.ZeroKnowledgeOn
+          (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup))
+          (VerifiableInference.CanServe (VerifierAndGoals.settingsOfRead setup.readParameters)) error)) →
+    VerifiableInference.AtEveryRequest.HandsOutNoProof
+        (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup))
+        (fun weights request =>
+          Eq
+            (VerifiableInference.AtEveryRequest.requestOutcome (VerifierAndGoals.settingsOfRead setup.readParameters)
+              weights request)
+            VerifiableInference.AtEveryRequest.Outcome.refused)
+        VerifiableInference.Compilation.isNoProof →
+      VerifiableInference.AtEveryRequest.ZeroKnowledgeBelowWhere
+        (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup)) (fun x => True)
+        (VerifiableInference.AtEveryRequest.requestOutcome (VerifierAndGoals.settingsOfRead setup.readParameters))
+        VerifiableInference.Compilation.finalVerifierQueries VerifiableInference.Compilation.finalReplyCount
+        VerifiableInference.Compilation.finalZeroKnowledgeError
+=== VerifiableInference.zeroKnowledgeAtEveryRequest
+in full: bfbe5126510ced6e6cd023d40f2bf4b9fc00e30ac5d4bea1e8aab8a36375592e
+∀ (setup : VerifiableInference.PublicSetup),
+  VerifiableInference.AtEveryRequest.ZeroKnowledgeBelowWhere
+    (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup)) (fun x => True)
+    (VerifiableInference.AtEveryRequest.requestOutcome (VerifierAndGoals.settingsOfRead setup.readParameters))
+    VerifiableInference.Compilation.finalVerifierQueries VerifiableInference.Compilation.finalReplyCount
+    VerifiableInference.Compilation.finalZeroKnowledgeError
+=== VerifiableInference.sound_stored
+in full: eba5ec7bffdbcfa0006231bab7a5b23d2f2dc67ca65a32855ee09b6513f7f78f
+VerifiableInference.Sound
+  (VerifiableInference.Compilation.compile (VerifiableInference.flashProve VerifiableInference.storedSetup))
+  VerifiableInference.Compilation.finalSoundnessError
+=== VerifiableInference.soundAndBinding_stored
+in full: 0be92b67577106850da8b52abf6ab69c4fe42c70ea771b4499323d71c0563905
+VerifiableInference.SoundAndBinding
+  (VerifiableInference.Compilation.compile (VerifiableInference.flashProve VerifiableInference.storedSetup))
+  VerifiableInference.Compilation.finalBindingError
+=== VerifiableInference.complete_stored
+in full: cef0d621ad51b70e08cb772cf5edbce5d76218f117e6cfac7ba3929a122f2502
+VerifiableInference.CompleteOn
+  (VerifiableInference.Compilation.compile (VerifiableInference.flashProve VerifiableInference.storedSetup))
+  (VerifiableInference.CanServe (VerifierAndGoals.settingsOfRead VerifiableInference.storedSetup.readParameters))
+  VerifiableInference.Compilation.finalCompletenessError
+=== VerifiableInference.zeroKnowledge_stored
+in full: bf0ba10f02429e768130666669102527ea8b566f551bef61c7c50967d4059c80
+Exists fun error =>
+  And
+    (∀ (asked replies : Nat),
+      instLENat.le asked VerifiableInference.Compilation.finalVerifierQueries →
+        instLENat.le replies VerifiableInference.Compilation.finalReplyCount →
+          ENNReal.instPartialOrder.le (error asked replies) VerifiableInference.Compilation.finalZeroKnowledgeError)
+    (VerifiableInference.ZeroKnowledgeOn
+      (VerifiableInference.Compilation.compile (VerifiableInference.flashProve VerifiableInference.storedSetup))
+      (VerifiableInference.CanServe (VerifierAndGoals.settingsOfRead VerifiableInference.storedSetup.readParameters))
+      error)
+=== VerifiableInference.zeroKnowledgeWithLabel_of_atEveryRequest
+in full: aa7de02c8e9f2abe4138f730899ad04f299eb124d659566daa00a410d910612b
+∀ (setup : VerifiableInference.PublicSetup) (error : ENNReal),
+  VerifiableInference.AtEveryRequest.ZeroKnowledgeBelowWhere
+      (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup)) (fun x => True)
+      (VerifiableInference.AtEveryRequest.requestOutcome (VerifierAndGoals.settingsOfRead setup.readParameters))
+      VerifiableInference.Compilation.finalVerifierQueries VerifiableInference.Compilation.finalReplyCount error →
+    VerifiableInference.AtEveryRequest.ZeroKnowledgeShownBelowWhere
+      (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup))
+      (VerifiableInference.AtEveryRequest.WellFormedRequest (VerifierAndGoals.settingsOfRead setup.readParameters))
+      (VerifiableInference.AtEveryRequest.requestLabel (VerifierAndGoals.settingsOfRead setup.readParameters))
+      VerifiableInference.Compilation.finalVerifierQueries VerifiableInference.Compilation.finalReplyCount error
+=== VerifiableInference.zeroKnowledgeWithLabel
+in full: 8fded746ddbaad484c7223a53b8ad671aaf970730146184fffde91d4297aa5b4
+∀ (setup : VerifiableInference.PublicSetup),
+  VerifiableInference.AtEveryRequest.ZeroKnowledgeShownBelowWhere
+    (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup))
+    (VerifiableInference.AtEveryRequest.WellFormedRequest (VerifierAndGoals.settingsOfRead setup.readParameters))
+    (VerifiableInference.AtEveryRequest.requestLabel (VerifierAndGoals.settingsOfRead setup.readParameters))
+    VerifiableInference.Compilation.finalVerifierQueries VerifiableInference.Compilation.finalReplyCount
+    VerifiableInference.Compilation.finalZeroKnowledgeError
+=== VerifiableInference.completeWhereTheWorstCaseCheckPasses
+in full: 26067dbdfb0028ca5e666bb1a07b368585ea1872ce62e65584d5afbbf4bbee52
+∀ (setup : VerifiableInference.PublicSetup)
+  (weights : VerifiableInference.ModelWeights (VerifierAndGoals.settingsOfRead setup.readParameters)),
+  VerifiableInference.PassesWorstCaseCheck (VerifierAndGoals.settingsOfRead setup.readParameters) weights →
+    ∀ (prompt : List VerifiableInference.Token) (length : Nat),
+      Ne prompt List.nil →
+        (∀ (token : VerifiableInference.Token),
+            List.instMembership.mem prompt token →
+              instLTNat.lt token (VerifierAndGoals.settingsOfRead setup.readParameters).vocabulary) →
+          instLTNat.lt 0 length →
+            instLENat.le (instHAdd.hAdd prompt.length length) 1025 →
+              Exists fun output =>
+                And (Eq output.length length)
+                  (And
+                    (VerifiableInference.IsTheModelsOwnOutput (VerifierAndGoals.settingsOfRead setup.readParameters)
+                      weights prompt output)
+                    (And
+                      (∀ (other : List VerifiableInference.Token),
+                        Eq other.length length →
+                          VerifiableInference.IsTheModelsOwnOutput
+                              (VerifierAndGoals.settingsOfRead setup.readParameters) weights prompt other →
+                            Eq other output)
+                      (VerifiableInference.AtEveryRequest.HonestProofRejectedAtMost
+                        (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup)) weights
+                        { fst := prompt, snd := output } VerifiableInference.Compilation.finalCompletenessError)))
+=== VerifiableInference.completeWhereSomeWorstCaseCheckPasses
+in full: 4cad71abc554c61cfa25032f41ca530cfa46c43198119b0a06e03391f5a674cf
+∀ (setup : VerifiableInference.PublicSetup)
+  (weights : VerifiableInference.ModelWeights (VerifierAndGoals.settingsOfRead setup.readParameters)),
+  VerifiableInference.PassesSomeWorstCaseCheck (VerifierAndGoals.settingsOfRead setup.readParameters) weights →
+    ∀ (prompt : List VerifiableInference.Token) (length : Nat),
+      Ne prompt List.nil →
+        (∀ (token : VerifiableInference.Token),
+            List.instMembership.mem prompt token →
+              instLTNat.lt token (VerifierAndGoals.settingsOfRead setup.readParameters).vocabulary) →
+          instLTNat.lt 0 length →
+            instLENat.le (instHAdd.hAdd prompt.length length) 1025 →
+              Exists fun output =>
+                And (Eq output.length length)
+                  (And
+                    (VerifiableInference.IsTheModelsOwnOutput (VerifierAndGoals.settingsOfRead setup.readParameters)
+                      weights prompt output)
+                    (And
+                      (∀ (other : List VerifiableInference.Token),
+                        Eq other.length length →
+                          VerifiableInference.IsTheModelsOwnOutput
+                              (VerifierAndGoals.settingsOfRead setup.readParameters) weights prompt other →
+                            Eq other output)
+                      (VerifiableInference.AtEveryRequest.HonestProofRejectedAtMost
+                        (VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup)) weights
+                        { fst := prompt, snd := output } VerifiableInference.Compilation.finalCompletenessError)))
+=== VerifiableInference.rejectsEmptyProof
+in full: cd9d23df18370875bb5819c31e982dccad1695efd76c16c9631dbbbe22c4672d
+∀ (setup : VerifiableInference.PublicSetup) (hash : VerifiableInference.Hash)
+  (commitment : VerifiableInference.Commitment) (prompt output : List VerifiableInference.Token),
+  Eq
+    (VerifiableInference.DeterministicAlgorithm.evaluate hash
+      ((VerifiableInference.Compilation.compile (VerifiableInference.flashProve setup)).verify commitment prompt output
+        VerifiableInference.Compilation.noProofForm))
+    Bool.false

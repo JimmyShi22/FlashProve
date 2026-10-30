@@ -1,0 +1,11 @@
+The page shows declarations of `VerifiableInference/`, `IntegerModel/`, `Policy/Front/`, `Ladder/`, `Johnson/Goal/Skeleton/` and `Johnson/PVR/`, and, in two last parts, declarations of the library's other folders that these name, and the theorems that [OnBytes/THEOREMS.md](OnBytes/THEOREMS.md) lists.
+Outside the two columns stand a file's head (its opening comment) and, at their place, the comments that open a part of the file (`/-! … -/`), in the two last parts the head alone; other comments between declarations are not shown.
+A definition is given whole, a theorem without its proof.
+Above each stand the `variable` and `include` lines in force there, and every line ending in `in`, which holds for the declaration below it alone.
+Other `open`, `attribute` and `set_option` lines are not shown, nor is a `variable` line all of whose names the declaration binds itself.
+The `variable` lines are part of every statement that names what they declare, and an `include` line adds one that is not named.
+A name that can be clicked leads to the entry that declares it: the mouse, or the keyboard's focus, shows the entry in a card; a click opens it in a panel and keeps your place (without scripts it jumps to the entry). The program finds that entry by written rules, without running Lean; when in doubt it makes no link.
+In a Lean text a marked name that cannot be clicked is declared in the library but has no entry here; the mouse shows its file and line.
+There a name without any mark is Lean's or Mathlib's, is bound in the text, or is one that the program could not tell.
+On this page `verify` cannot be followed to its bottom: many names below it have no entry here; the files declare them.
+No build compares the page with the files (`scripts/check_statements_html.py` does, when it is run); where it differs from a file, the file counts.

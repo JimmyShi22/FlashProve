@@ -1,0 +1,696 @@
+VerifiableInference.ArgumentSystem | An argument system: the model, the honest committer, the honest prover, the verifier
+VerifiableInference.ArgumentSystem.IsModelOutput | The output tokens are the model's
+VerifiableInference.Sound | Soundness: accepted output tokens are those of the model with the extracted weights
+VerifiableInference.SoundAndBinding | Soundness with a binding commitment
+VerifiableInference.SoundOpened | Soundness for an opened commitment
+VerifiableInference.sound_of_soundAndBinding | Soundness with a binding commitment implies soundness
+VerifiableInference.soundOpened_of_soundAndBinding | Soundness with a binding commitment implies soundness for an opened commitment, with 2 ε in place of ε
+VerifiableInference.ArgumentSystem.accepts | The verifier's decision under a given hash function
+VerifiableInference.ArgumentSystem.run_verify | The verifier step of the experiments returns that decision
+VerifiableInference.View | A verifier's view
+VerifiableInference.MaliciousVerifier | A malicious verifier
+VerifiableInference.MaliciousVerifier.QueryBound | A malicious verifier makes at most a given number of queries
+VerifiableInference.realSteps | The verifier's steps in the real experiment
+VerifiableInference.realExperiment | The real experiment
+VerifiableInference.statisticalDistance | Statistical distance
+VerifiableInference.QueryLog.Consistent | Equal queries have equal answers
+VerifiableInference.rejectAll_sound | Soundness by itself is satisfied by a verifier that rejects everything
+VerifiableInference.Hash | The hash function
+VerifiableInference.uniformHash | The uniform distribution on hash functions
+VerifiableInference.RandomizedAlgorithm | A randomized algorithm that queries the hash function
+VerifiableInference.RandomizedAlgorithm.bind | Sequential composition of randomized algorithms
+VerifiableInference/RandomOracleModel.lean:64 | The notation for a sequence of steps
+VerifiableInference.RandomizedAlgorithm.QueryBound | At most a given number of queries
+VerifiableInference.RandomizedAlgorithm.withQueryLog | An algorithm with its query log
+VerifiableInference.RandomizedAlgorithm.run | The output distribution of an algorithm under a fixed hash function
+VerifiableInference.eventProbability | The probability of an event under a distribution
+VerifiableInference.Prob | Probability over the hash function and the algorithm's random choices
+VerifiableInference.DeterministicAlgorithm | A deterministic algorithm that queries the hash function
+VerifiableInference.DeterministicAlgorithm.evaluate | The result of a deterministic algorithm under a hash function
+VerifiableInference.DeterministicAlgorithm.toRandomized | A deterministic algorithm as a step of an experiment
+Iop.HolographicProtocol | The type of protocols: an encoder, a decoder and three IOPs
+Iop.InteractiveOracleProof | An IOP with external oracle strings
+Iop.BatchInteractiveOracleProof | A batch IOP: the IOP of one batch position, with its round marking
+Rom.OracleCoding | An implementation of separate oracles by a single random oracle
+TypedOracleCompiler.Compile.Batch.typedOracleFamily | The family of separate oracles of the compiled scheme and of its analysis
+Compile.Opening | A Merkle opening of one position of an oracle string
+TypedOracleCompiler.Compile.Batch.Check | One Merkle opening to verify against a root
+TypedOracleCompiler.Compile.Batch.hashTreeNode | An inner node of a Merkle tree
+Fmt.oracle | The concrete hash function, on byte strings
+Fmt.formatHash | The format's hash: BLAKE2b with a label, a salt and a personalization
+OnBytes.formatHashFastForm | The format's hash, in the form for compiled code
+OnBytes.formatHashFastForm_eq_formatHash | Equality of the two forms of the format's hash
+OnBytes.secondHashFunctionState | The second hash function: BLAKE2b's compression function, with a number in the counter
+OnBytes.secondHashFunction | The second hash function, of a number and a byte string
+OnBytes.secondHashFunctionTree | The second hash function's tree hash of a long byte string
+TypedOracleCompiler.Compile.Batch.OneProtocolProof | A proof string for one IOP, at one batch position
+TypedOracleCompiler.Compile.Batch.recomputeChain | The Fiat–Shamir chain: the verifier's challenges in all rounds
+TypedOracleCompiler.Compile.Batch.verifyOneProtocol | The compiled verifier of one IOP, at one batch position
+TypedOracleCompiler.Compile.Batch.Cms.verifyAtFullKey | The verifier rejects if a part is missing and otherwise makes six checks: the copy's number, two seeds and three IOPs
+TypedOracleCompiler.Compile.Batch.Cms.verifyAtKeyRoot | The verifier whose key is a root with its out-of-domain sample
+VerifiableInference.OnPublicFiles.innerCompiledVerifier | The inner compiler's verifier
+IntegerTransformer.model | The integer model: maps the tokens so far to the next token, or to nothing
+IntegerTransformer.trace | All values of the integer model, at all positions
+IntegerTransformer.Settings | The settings: sizes and scales
+IntegerTransformer.LayerSettings | The settings of one layer: exponents, shifts and offsets
+IntegerTransformer.Weights | The weights
+IntegerTransformer.LayerWeights | The weights of one layer
+IntegerTransformer.rmsNorm | The normalization of one row of the residual stream
+IntegerTransformer.projections | Queries, keys and values at one position
+IntegerTransformer.attendHead | Causal attention of one query head at one position
+IntegerTransformer.attention | Attention of one layer, on the whole residual stream
+IntegerTransformer.hiddenUnits | The hidden units of one gated block
+IntegerTransformer.routedExpert | The router, and the expert that it chooses
+IntegerTransformer.feedForward | The feed-forward block of one layer, at one position
+IntegerTransformer.layer | One layer: attention, then the feed-forward block at each position
+IntegerTransformer.firstLayers | The first layers, each applied to the output of the one below it
+IntegerTransformer.allConditionsHold | The range conditions, at all positions and in all layers
+IntegerTransformer.wellFormed | The test that the arguments fit together
+IntegerTransformer.isPrompt | The test on the tokens
+Fmt.blake2b | Unkeyed BLAKE2b with a salt and a personalization
+VerifiableInference.modelNextToken | The model at the fixed lookup tables: the next token, or nothing
+VerifiableInference.ModelWeights | The weights at given settings
+VerifiableInference.Desc.KindName | The label of a sub-protocol's kind
+VerifiableInference.Desc.Place | The address of a sub-protocol within a file's IOP
+Fmt.Entry | One schedule entry
+Fmt.Shape | What a round declares about a tree that it opens
+Fmt.Stored | A committed table as a round queries it
+Fmt.partOf | A committed table's share of a round's sampled positions
+Fmt.partsFrom | The position number after the last share, if the tables' shares are contiguous starting at position number i
+Fmt.increasing | True if a list of numbers is strictly increasing
+Fmt.storedKey | The key of a committed table's columns in a view
+Fmt.insertIntoIncreasingList | Inserts a number into a strictly increasing list
+Fmt.listOf | The distinct entries of a list of numbers, in strictly increasing order
+Fmt.Item | The type of an item in a prover's message
+Fmt.ItemValue | A parsed item of a prover's message
+Fmt.Drawn | The values sampled as a round's challenge
+Fmt.RoundView | A round's values
+Fmt.View | The decision's view of one chain
+VerifiableInference.Desc.OpenedColumn | An opened column
+Fmt.TreeSource | Names the Merkle tree that a round opens
+Fmt.DeclaredRound | One declared round
+VerifiableInference.Desc.SymbolComponent | One tenant of an oracle message's symbols
+VerifiableInference.Desc.Oracle | The declared shape of an oracle message where it is sent
+VerifiableInference.Desc.Block | One sub-protocol over state S
+VerifiableInference.Desc.Kind | A kind of sub-protocol
+VerifiableInference.Desc.KindWithGuestIdentities | A kind that takes a list of items
+VerifiableInference.Desc.Link | A segment of a chain
+VerifiableInference.Desc.Chain | A chain of sub-protocols
+VerifiableInference.Desc.FileDescription | A three-chain file's IOP for instances Xi
+VerifiableInference.Desc.OneChainFileDescription | A one-chain file's IOP for instances Xi
+VerifiableInference.Desc.named | Turns an optional value into a result
+VerifiableInference.Desc.need | Turns a Boolean check into a result
+VerifiableInference.Desc.groupsOf | The queries of declared rounds
+VerifiableInference.Desc.itemOf | The sort of a message item that was read
+VerifiableInference.Desc.drawsMarkedNonzeroHaveNonzeroWords | Checks one round's sampled elements that must be nonzero
+VerifiableInference.Desc.roundsFit | Checks rounds' values against declared rounds
+VerifiableInference.Desc.regroup | Splits a list of opened columns into consecutive groups of the given lengths
+VerifiableInference.Desc.noDigest | A round's values with the challenge's digest field set to none
+VerifiableInference.Desc.Block.step | Runs one sub-protocol
+VerifiableInference.Desc.claimsInStep | Runs one named claim function of a sub-protocol on the count of claims so far and the state
+VerifiableInference.Desc.claimsInBy | Runs the claim functions named in the list order
+VerifiableInference.Desc.afterIn | Runs the after functions named in the list order
+VerifiableInference.Desc.namesOk | Checks two lists of names against each other
+VerifiableInference.Desc.orderOk | Public check: each claim function is listed exactly once
+VerifiableInference.Desc.orderAfterOk | Public check: each after function is listed exactly once
+VerifiableInference.Desc.Block.hasNoClaimsAndNothingAfter | True if a sub-protocol has no claim function and no after function
+VerifiableInference.Desc.Link.runBehind | The step of a segment directly after its batch
+VerifiableInference.Desc.Link.blocksInOrder | A segment as a list of sub-protocols
+VerifiableInference.Desc.Chain.blocksInOrder | A chain as a list of sub-protocols
+VerifiableInference.Desc.fieldPrimeWord | The prime 2^64 − 2^32 + 1 as a 64-bit word
+VerifiableInference.Desc.viewWordsBelowPrime | Checks that each word of a view that encodes a field element is below the prime
+VerifiableInference.Desc.foldBlocks | Runs a list of sub-protocols in order
+VerifiableInference.Desc.withEmptySealRound | Appends one empty round
+VerifiableInference.Desc.chainAt | Runs one chain on its view from an initial state, using foldBlocks
+VerifiableInference.Desc.BookPlan.DeclaredRoundsByChain | The declared rounds of a file's three chains
+VerifiableInference.Desc.BookPlan.SentOraclesByChain | The oracle messages that each chain sends
+VerifiableInference.Desc.BookPlan.Opening | One opening of a Merkle tree
+VerifiableInference.Desc.BookPlan.openings | All openings of Merkle trees in the three chains
+VerifiableInference.Desc.BookPlan.rootOf | The declared oracle message for the tree of an opening
+VerifiableInference.Desc.BookPlan.onSymbolComponents | Applies a condition to the tenants of an opened tree
+VerifiableInference.Desc.BookPlan.sum | Clause: every oracle message has a tenant, and its tenants' words add up to the symbol's width
+VerifiableInference.Desc.BookPlan.rows | Clause: every tenant has field degree 1 or 3
+VerifiableInference.Desc.BookPlan.everyOpenedTreeIsListed | Clause: every opened tree has a declared oracle message
+VerifiableInference.Desc.BookPlan.range | Clause: no opened tree is deeper than the logarithm of the range of sampled positions
+VerifiableInference.Desc.BookPlan.alike | Clause: in an opened tree, all tenants with an out-of-domain sample have the same groups
+VerifiableInference.Desc.BookPlan.oneGroup | Clause: in an opened tree with a tenant that has no out-of-domain sample, each tenant with one belongs to at most one group
+VerifiableInference.Desc.BookPlan.once | Clause: a tree with a tenant without an out-of-domain sample is opened at most once
+VerifiableInference.Desc.BookPlan.saySampled | The number of tenants with an out-of-domain sample among the given oracle messages
+VerifiableInference.Desc.BookPlan.answeredIn | One chain's rounds and tenants agree on the numbers of sample answers
+VerifiableInference.Desc.BookPlan.answered | Clause: answeredIn holds on each of the three chains
+VerifiableInference.Desc.BookPlan.sentOraclesMatchEntries | Clause: oracle messages are declared for exactly three chains
+VerifiableInference.Desc.BookPlan.holdsSampled | True if the oracle message for a given chain and number has a tenant with an out-of-domain sample
+VerifiableInference.Desc.BookPlan.inTime | Clause: a tree that a chain sends itself is opened no earlier than the round that sends it
+VerifiableInference.Desc.BookPlan.inOrderIn | Each round of one chain declares its opened trees in strictly increasing order
+VerifiableInference.Desc.BookPlan.inOrder | Clause: inOrderIn holds on each of the three chains
+VerifiableInference.Desc.BookPlan.clauses | The eleven clauses on Merkle trees
+VerifiableInference.Desc.BookPlan.allClausesHold | All eleven clauses hold
+VerifiableInference.Desc.FileDescription.roundsDeclaredByBlocks | The declared rounds of the three chains
+VerifiableInference.Desc.FileDescription.places | The table of all sub-protocols of the three chains in order
+VerifiableInference.Desc.Block.shaped | Public check on one sub-protocol
+VerifiableInference.Desc.openedOwn | Every opening in the file of a tree that a given chain sends
+VerifiableInference.Desc.FileDescription.lastChainFirstTreeNumber | The tree number of the third chain's first own tree
+VerifiableInference.Desc.FileDescription.labelsOk | Public check on tree numbers in shapes
+VerifiableInference.Desc.blocksOk | Every sub-protocol of a list passes its own public check planOk and the check shaped
+VerifiableInference.Desc.sentOf | Logarithmic length and symbol width of each oracle message sent
+VerifiableInference.Desc.sendRound | The number of the round that sends a chain's n-th oracle message
+VerifiableInference.Desc.drawsAny | True if a round's challenge contains a field element, a position or a matrix entry
+VerifiableInference.Desc.beforeAt | On one chain, every oracle message that a sub-protocol names as needed beforehand is sent no later than its first challenge
+VerifiableInference.Desc.oraclesOf | The oracle messages that a chain's sub-protocols send
+VerifiableInference.Desc.FileDescription.beforeOk | Public check on order
+VerifiableInference.Desc.FileDescription.roots | The three chains' oracle messages
+VerifiableInference.Desc.FileDescription.treeSharingOk | Public check on Merkle trees
+VerifiableInference.Desc.FileDescription.placesOk | Public check on addresses
+VerifiableInference.Desc.readsFit | Per round: positions are sampled iff something is queried
+VerifiableInference.Desc.FileDescription.readsOk | Public check on each round's queries
+VerifiableInference.Desc.FileDescription.sealLast | Public check on the first chain's last sub-protocol
+VerifiableInference.Desc.FileDescription.sentFit | Public check that the declared shapes of oracle messages match those at their openings, and that every oracle message is opened
+VerifiableInference.Desc.FileDescription.planOkCore | Conjunction of public checks
+VerifiableInference.Desc.FileDescription.planOk | Conjunction of public checks: planOkCore and sealLast
+VerifiableInference.Desc.FileDescription.wantedOk | Public check: the sub-protocols' addresses and numbers of rounds equal a given table
+VerifiableInference.Desc.beforesOf | A list of sub-protocols as triples
+VerifiableInference.Desc.FileDescription.owedOk | Public check: at each listed address, a sub-protocol samples a challenge and names the listed oracle messages
+VerifiableInference.Desc.roundlessChain | A chain that does nothing
+VerifiableInference.Desc.OneChainFileDescription.asFile | A one-chain written IOP as a three-chain one whose second and third chains do nothing
+VerifiableInference.Desc.OneChainFileDescription.roundsDeclaredByBlocks | The declared rounds of the chain
+VerifiableInference.Desc.OneChainFileDescription.storedOk | Public check on committed tables' numbers
+VerifiableInference.Desc.OneChainFileDescription.planClauses | The public checks of a one-chain written IOP as a list of names with their values
+VerifiableInference.Desc.OneChainFileDescription.planOk | The public checks of a one-chain written IOP
+VerifiableInference.Desc.FileDescription.planWord | The error message of a written IOP's public checks, if any
+VerifiableInference.Desc.runCore | The verifier's decision for three chains
+VerifiableInference.Desc.FileDescription.runEnd | The three chains' final states, or the reason for rejection
+VerifiableInference.Desc.FileDescription.run | The verifier's decision for a written IOP F
+VerifiableInference.Desc.FileDescription.pull | A written IOP for instances Xi, viewed as one for instances Xi'
+VerifiableInference.Desc.OneChainFileDescription.planWord | The error message of a one-chain written IOP's public checks, if any
+VerifiableInference.Desc.OneChainFileDescription.runEnd | The verifier's decision for one chain
+VerifiableInference.Desc.OneChainFileDescription.run | The verifier's decision for a one-chain written IOP
+VerifiableInference.Desc.Key.descriptionFromSource | The written offline IOP
+VerifiableInference.Desc.Key.firstChain | The offline IOP's first chain
+VerifiableInference.Desc.Key.sharedChain | The offline IOP's second chain
+VerifiableInference.Desc.Key.thirdChain | The offline IOP's third chain
+ProofFile.onlineDescription | The written online IOP
+ProofFile.onlineDescriptionFromBlockTables | The written online IOP, with its parts as arguments
+ProofFile.onlineDescriptionFromPublicPart | The written online IOP from the public parameters and the given sub-protocols
+ProofFile.onlineDescriptionAfterTests | The last step of the assembly
+ProofFile.onlineFirstChainBlockTables | The lists of sub-protocols from which the online IOP's first chain is assembled
+ProofFile.onlineSharedChain | The online IOP's second chain
+ProofFile.onlineLastChain | The online IOP's third chain
+VerifiableInference.Desc.First.ModelPart | The three sorts of model part
+VerifiableInference.Desc.First.kindOfModelPart | The kind of the sub-protocol specific to a segment's sort
+VerifiableInference.Desc.First.kindsBeforeBatching | The kinds of a segment's sub-protocols before its batching
+VerifiableInference.Desc.First.backKinds | The kinds of the sub-protocols after the last segment
+VerifiableInference.Desc.First.closeKinds | The kinds of the three sub-protocols that close a segment
+VerifiableInference.Desc.First.Blocks | The first chain's parts
+VerifiableInference.Desc.First.linkAt | Builds segment number l of a given sort
+VerifiableInference.Desc.First.firstChainWithoutReplyGuard | Builds the first chain from the list of the segments' sorts
+VerifiableInference.Desc.First.firstChain | The first chain as used
+Desc.K14.blocks | The test on the committed table
+VerifiableInference.Desc.Third.lastChainWithOwnTest | The third chain
+Desc.K15.linkBlocksBeforeTest | The link IOP's five sub-protocols before its proximity test
+Desc.K15.linkDescriptionAt | The written link IOP
+Desc.K15.linkDecisionAtParameterFile | The link IOP's decision
+VerifiableInference.Desc.K1.sendOwn | Oracle message with out-of-domain sample
+VerifiableInference.Desc.K1.commitOwn | Oracle message with out-of-domain sample, inside a segment
+VerifiableInference.Desc.K1.firstSegmentOpening | Oracle message with out-of-domain sample at the start of the first segment
+VerifiableInference.Desc.First.K2.codeSwitchKind | Code switch between segments
+VerifiableInference.Desc.K3.lookupKind | Product-tree lookup argument, as used in the offline IOP
+VerifiableInference.Desc.K3.Law.blockVia | Product-tree lookup argument, as used in the online IOP
+OnBytes.Desc.First.K4.block | Layer-segment sumchecks
+VerifiableInference.Desc.First.Att.P.attentionKind | Attention-segment sumchecks
+VerifiableInference.Desc.Kinds.Head.kind | Output-head sumchecks
+VerifiableInference.Desc.Kinds.Head.kindWithJoin | Output-head sumchecks as used
+VerifiableInference.Desc.Kinds.Reply.kind | Next-token message: one round
+VerifiableInference.Desc.First.K8.approximateRangeProofDrawKind | Draw of the approximate range proof
+VerifiableInference.Desc.First.K8.whole | Draw of the approximate range proof, as used
+VerifiableInference.Desc.K9.batch | Segment claim batching
+VerifiableInference.Desc.First.Close.kind | Segment-closing row fold, 2 + k rounds
+Johnson.Desc.First.ForkMerge.headClaimMergeKind | Output-head committed-table sumcheck, lk + 4 rounds
+VerifiableInference.Desc.K12.proximityTestKind | Proximity test with linear constraints
+VerifiableInference.Desc.K12.guardedProximityTestParts | The parts of the proximity test with linear constraints
+VerifiableInference.Desc.K13.claimCombinationBlock | Committed-table claim merge, 2 + kCol rounds
+VerifiableInference.Desc.Third.batchLinearConstraintsSecondPart | Second part of the committed-table claim reduction
+VerifiableInference.Desc.roundlessBlock | A sub-protocol with no rounds and no kind
+VerifiableInference.Desc.ChainEnd.chainEnd | A chain's last sub-protocol
+VerifierAndGoals.SecondHashFunctionType | The type of a function that can replace the byte format's second hash function
+VerifierAndGoals.Description | The data that determine the argument system
+Hiop.ConfigurationWithOutOfDomainSample | A configuration
+FlashProve.descriptionOfDataWithReading | Builds a Description from parts L and a hash-oracle algorithm more
+FlashProve.DescriptionData | Parts from which a Description is built
+OnBytes.Slice.DecR.Claims | Relation data on a decoded table
+OnBytes.Flat.Coding | How an index is encoded
+OnBytes.Flat.FilesParameters | The planner's values
+FlashProve.dataAtFiles | The parts at every choice of public files Z
+FlashProve.dataAtFilesFromRounds | The parts L evaluated at one choice of public files
+FlashProve.DescriptionData.filesParametersOrDefault | The planner's values: L.G if L.live accepts the public files, otherwise L.Gd
+FlashProve.DescriptionData.keyRoundsOrEmpty | The offline IOP's round data L.DK if L.live accepts the public files
+FlashProve.DescriptionData.proofRoundsOrEmpty | The online IOP's round data L.DP if L.live accepts the public files
+FlashProve.emptyRoundsData | Round data made from three empty lists of rounds
+FlashProve.roundsDataFit | A check on the offline and online IOPs' round data
+OnBytes.Maker.Page.kindsAndWorkBelow256 | In every round except the first chain's sealing round, the challenge kind's number and the number of proof-of-work bits are below 256
+FlashProve.DescriptionDataAtFiles | The parts at one fixed choice of public files
+FlashProve.DescriptionDataAtFiles.toDescriptionFields | The parts at one fixed choice of public files, in the form that descriptionOfFieldsWithReading takes
+FlashProve.DescriptionDataAtFiles.inputFieldsAtReadings | The compiler's further data as a function of a digest c and a list of digests m
+FlashProve.DescriptionDataAtFiles.inputFieldsAtReadingsAsBytes | The compiler's further data at a 32-byte string c and a list of byte strings
+FlashProve.descriptionOnBytesWithReading | The description with a proof submitted as bytes
+FlashProve.descriptionWithDecoderAndReading | A description from parts, a decoder and a fallback
+FlashProve.committerAndProverWithParser | The honest algorithms Hn and the parser parserWithDecoder
+FlashProve.parserWithDecoder | The parser, which ignores the prompt and the output
+FlashProve.CommitterAndProver | Honest committer and prover for a proof type Form
+FlashProve.descriptionOfFieldsWithReading | Defines every field of Description from parts fr Z indexed by the public files Z
+FlashProve.DescriptionFields | The parts that descriptionOfFieldsWithReading takes, for one choice of public files
+FlashProve.CommitterProverFormAndParser | Honest committer and prover
+OnBytes.Flat.relationsAndEncodingOfClaims | The relation and the encoding for DecR.configurationOfStoredTable
+OnBytes.Slice.DecR.RelationsAndEncoding | The data that DecR.configurationOfStoredTable takes in addition to D and A
+OnBytes.Slice.DecR.configurationOfStoredTable | A committed table's configuration
+VerifiableInference.OnPublicFiles.threeProtocolsAtFullSize | The three IOPs at the full parameter size
+OnBytes.RunA.filesAt | The three IOPs over a committed table's configuration
+OnBytes.RunA.filesOf | Assembles a value of type Files
+OnBytes.Flat.Files | Three public-coin IOPs over a configuration C
+OnBytes.Flat.Files.withProvers | Combines the three IOPs
+OnBytes.Maker.reductionOfWholeFile | A file's three chains as one interactive oracle reduction to the trivial statement
+Iop.IOR.toInteractiveOracleProof | The IOP defined by an interactive oracle reduction to the trivial statement
+VerifiableInference.OnPublicFiles.linkProtocolAtFullSize | The part of linkProtocolWithWireAtFullSize that filesOf takes
+OnBytes.RunA.LinkProtocolWithLeafCoding | The link IOP's data for filesOf
+VerifiableInference.OnPublicFiles.linkProtocolWithWireAtFullSize | The link IOP at the full parameter size with its encoding data
+OnBytes.K.Arm.linkProtocolWithWireOfRoundData | The compiler's input for the link: the IOP linkProtocolOfRoundData, its round marking, two maps on symbols, K and encoding data
+OnBytes.Flat.linkProtocolOfRoundData | The link IOP over two committed tables
+OnBytes.Flat.linkSkeletonOfRoundData | The link IOP before the conversions .up and .loc
+TypedOracleCompiler.Run.PQ.skeletonOverBothExternalStrings | An IOP over two committed tables
+Run.PQ.everyOpeningHasItsDraws | True if every table query's round exists and its share contains count sampled positions
+TypedOracleCompiler.Run.PQ.symbolsCarryTheirPositions | True if every queried table position is below 2^a and the symbol read there has that position as its first component
+FlashProve.flashProveDataAtSecondHash | This protocol's parts at o
+FlashProve.flashProveDataNoExtractorAtHash | The parts of this protocol at o, with an extractor that returns nothing
+FlashProve.theClaims | This protocol's relation data of type Claims
+FlashProve.theCoding | This protocol's index encoding of type Coding
+FlashProve.theProversAt | This protocol's provers
+FlashProve.theHonest | The constant committer and prover in this protocol's record
+FlashProve.fixedCommitterAndProver | A constant committer and prover with trivial types
+FlashProve.theKeyGateAt | The offline IOP's decision as used in the protocol
+FlashProve.theProofGateAt | The online IOP's decision as used in the protocol
+FlashProve.theLinkGateAt | The link IOP's decision as used in the protocol
+VerifiableInference.OnPublicFiles.gatedFileDecision | A three-view decision guarded by a Boolean
+VerifiableInference.OnPublicFiles.gatedLinkDecision | A one-view decision guarded by a Boolean
+FlashProve.protocolDataWellFormedAt | The test on the public files
+FlashProve.dataWellFormedAtFullSizeDepth | The offline and online IOPs' round data have the full-size committed table's depth
+FlashProve.dataWellFormedApartFromDepth | The numeric conditions on the round data, and that no list of rounds is empty
+VerifiableInference.OnPublicFiles.sizeNumbersFitAtPlan | The eight numeric conditions at given round data and planner's values
+VerifiableInference.OnPublicFiles.sizeNumbersFitAtFullSize | A conjunction of eight numeric conditions on the three IOPs' round data
+FlashProve.listsFull | Each of the six lists of rounds is non-empty
+FlashProve.filesParametersOrRefusalAt | The planner's values, or an error
+FlashProve.thePlanAt | The value of filesParametersOrRefusalAt
+FlashProve.theKeyRunAt | The offline IOP's verifier decision
+FlashProve.theKeyDataAt | The offline IOP's round data
+FlashProve.keyDataAndDecisionOrRefusalAt | The offline IOP's round data and decision, or an error
+VerifiableInference.Desc.Key.keyDataAndDecisionAtFixedDigest | The offline IOP's round data and decision at the fixed digest, or an error
+VerifiableInference.Desc.Key.fixedDigest | The digest at which the written offline IOP is built
+VerifiableInference.Desc.fixedConfigurationDigest | A constant: 32 bytes of value 1
+VerifiableInference.Desc.Key.keyDataAndDecisionAtDigest | Runs the planner madeAt on the parsed public files
+VerifiableInference.Desc.Key.keyDataAndDecisionOfPlannerAnswer | Builds the written offline IOP from the planner's result
+VerifiableInference.Desc.Key.descriptionFromPlan | The written offline IOP built from the planner's result
+VerifiableInference.Desc.Key.keyDataAndDecisionOfDescription | The round data and decision of the written offline IOP F, or an error
+VerifiableInference.Desc.Key.KeyDataAndDecisionOrRefusal | The type of the makers' result for the offline IOP
+VerifiableInference.Desc.Key.KeyRun | The type of the offline IOP's decision
+VerifiableInference.Desc.Key.keyInstanceOfOutOfDomainSample | The offline IOP's instance as the written IOP takes it
+VerifiableInference.Desc.FileDescription.data | The round data of a written IOP
+FlashProve.theProofRunAt | The online IOP's verifier decision
+FlashProve.theProofDataAt | The online IOP's round data
+FlashProve.proofDataAndDecisionOrRefusalAt | The online IOP's round data and decision, or an error
+LPFD.Full.proofDataAndDecisionOfPublicFiles | Builds the written online IOP from o and the public files with ProofFile.onlineDescription
+LPFD.Full.proofDataAndDecisionOfDescription | The round data and decision of the written online IOP F, or an error
+LPFD.Full.proofDecisionOfDescription | The online IOP's decision
+LPFD.Full.instanceAsPlainRecord | The online IOP's instance as the written IOP takes it
+FlashProve.linkDecisionAtFiles | The link IOP's verifier decision
+Desc.K15.linkAt | The written link IOP at P
+Desc.K15.linkDeclaredRounds | The declared rounds of the link IOP's chain at parameters P
+Desc.K15.linkRoundsMatchPlan | The public check that the link IOP's declared rounds match the schedule
+Array.entry | An entry of an array, or the default value
+IntegerTransformer.IntegerVector | A vector of integers
+IntegerTransformer.Matrix | A Matrix is an array of vectors
+IntegerTransformer.tabulate | The array with given entries
+IntegerTransformer.sumOver | A finite sum
+IntegerTransformer.maxUpTo | The largest of finitely many values
+IntegerTransformer.firstArgmax | The first argmax
+IntegerTransformer.roundShift | The rounding shift
+IntegerTransformer.clamp | Clamping to a symmetric interval
+IntegerTransformer.activationBound | The bound to which normalized rows, queries, keys and values are clamped
+IntegerTransformer.balancedLowByte | The balanced low byte
+IntegerTransformer.integerSquareRoot | The integer square root
+IntegerTransformer.addVectors | The entrywise sum of two vectors
+IntegerTransformer.product | The vector-matrix product
+IntegerTransformer.Settings.queryWidth | The number of entries of all query heads together
+IntegerTransformer.Settings.keyValueWidth | The number of entries of all key heads together, and of all value heads together
+IntegerTransformer.Settings.isMixture | Whether a layer is a mixture-of-experts layer
+IntegerTransformer.KeyedTable | A lookup table whose keys are consecutive integers
+IntegerTransformer.KeyedTable.read | The entry of a lookup table at a key
+IntegerTransformer.Tables | The type of the five lookup tables that the model reads
+IntegerTransformer.GatedWeights | The three weight matrices of one gated feed-forward block
+IntegerTransformer.Norm | The values of one normalization of one vector
+IntegerTransformer.rotate | The rotary position embedding
+IntegerTransformer.Projections | The queries, keys and values of one position
+IntegerTransformer.Head | The values of one query head's attention at one position
+IntegerTransformer.Attention | The values of one layer's attention at all positions
+IntegerTransformer.HiddenUnits | The values of one gated block's hidden units
+IntegerTransformer.downSum | One entry of a block's down projection, before the rounding shift
+IntegerTransformer.Routed | The router's values at one position
+IntegerTransformer.noRoute | The router's values in a dense layer
+IntegerTransformer.FeedForward | The values of one layer's feed-forward block at one position
+IntegerTransformer.Layer | The values of one layer at all positions
+IntegerTransformer.streamAbove | The residual stream after the given layers
+IntegerTransformer.Trace | The intermediate values of the model on given input tokens
+IntegerTransformer.fits16 | The test that every entry is a signed 16-bit integer
+IntegerTransformer.normOk | The range conditions of one normalization
+IntegerTransformer.attentionOk | The range conditions of one layer's attention at one position
+IntegerTransformer.unitsOk | The range conditions of one gated block
+IntegerTransformer.feedForwardOk | The range conditions of a feed-forward block at one position
+IntegerTransformer.hasSize | The test that a matrix has the given numbers of rows and columns
+IntegerTransformer.GatedWeights.hasSizes | The test on the sizes of a gated block's three matrices
+IntegerTransformer.KeyedTable.covers | The test that a lookup table has an entry at every key in an interval
+IntegerTransformer.layerWellFormed | The test on one layer's sizes, offsets and shifts
+VerifiableInference.packedEntry | One entry of a packed array
+VerifiableInference.cosineTable | The cosine table
+VerifiableInference.sineTable | The sine table
+VerifiableInference.exponentialTable | The exponential table of the softmax
+VerifiableInference.siluTable | The SiLU table
+VerifiableInference.sigmoidTable | The sigmoid table
+VerifiableInference.lookupTables | The library's five lookup tables
+VerifiableInference.entriesWithin | The test whether every entry of a matrix lies in an interval
+VerifiableInference.gatedWithin | The test whether a gated block's entries are signed 13-bit numbers
+VerifiableInference.layerWeightsInRange | The test on the ranges of one layer's weights
+VerifiableInference.weightsInRange | The range test for all weights
+VerifiableInference.weightsAreValid | The validity test for weights at given settings
+IntegerModel.zeroFilledWindow | The window of 1,024 tokens: the prompt, the output, then zeros
+Run.Blake2b.ChainingValue | The chaining value: eight 64-bit words
+Run.Blake2b.MessageBlock | One message block: sixteen 64-bit words
+Run.Blake2b.WorkVector | The work vector: sixteen 64-bit words
+Run.Blake2b.Quad | The four words that the function G changes
+Run.Blake2b.IV | The eight constants of BLAKE2b's initialization vector
+Run.Blake2b.rotr64 | A 64-bit word rotated right by c bits
+Run.Blake2b.G | The mixing function G
+Run.Blake2b.ROUND | One round: eight calls of G
+Run.Blake2b.State | The hashing state
+Run.Blake2b.compress | The compression function
+Run.Blake2b.byteOrZero | A byte of an array as a word, or 0 if the index is out of range
+Run.Blake2b.load64Plain | The 64-bit word of eight little-endian bytes
+Run.Blake2b.MessageBlock.ofBytesPlain | The 128 bytes at an offset as sixteen words
+Run.Blake2b.incrementCounter | The state with its two-word counter increased by a number
+Run.Blake2b.setLastblock | The state with the next block marked as the last one
+Run.Blake2b.init0 | The state whose chaining value is the initialization vector and whose other words are all 0
+Run.Blake2b.initParam | The state after the eight words of the parameter block are added
+Run.Blake2b.parameterBlockFirstWord | The first word of the parameter block: output length, key length, fanout 1, depth 1
+Run.Blake2b.firstStateSaltedPlain | The first state, for an output length, a salt and a personalization
+Run.Blake2b.updateBlocks | The state after a number of non-final blocks
+Run.Blake2b.finalBlock | The state after the last block is compressed
+Run.Blake2b.message | The state after a whole message
+Run.Blake2b.stateSaltedPlain | The state after a whole message, starting from the first state
+Run.Blake2b.store64 | An array with the eight little-endian bytes of a word appended
+Run.Blake2b.ChainingValue.bytes64 | The 64 bytes of the chaining value
+Run.Blake2b.ChainingValue.bytes | The digest: a prefix of the chaining value's 64 bytes
+Run.Blake2b.blake2bSaltedPlain | BLAKE2b of a byte string with a salt and a personalization and no key
+VerifiableInference.Compilation.HonestProvers | The honest provers of a protocol's three interactive oracle proofs
+VerifiableInference.Compilation.Model | A model
+VerifiableInference.Compilation.HashLayout | How a protocol maps onto queries to one hash function
+VerifiableInference.Compilation.PublicSide | The public side of what is compiled, for one set of public files
+VerifiableInference.Compilation.Compilable | What compile takes
+VerifiableInference.Compilation.compiledVerifier | The outer compiler's verifier
+VerifiableInference.Compilation.compile | The outer compiler
+VerifiableInference.Compilation.HashLayoutWithProverFields | A hash layout with six more fields that the verifier does not read
+VerifiableInference.Compilation.CompilerWiring | The layouts as read by the committer and the prover, and a proof that they equal the verifier's
+VerifiableInference.Compilation.ProofFormat | How a proof is written down
+VerifiableInference.Compilation.CompiledSide | The four parts of an argument system that its verifier does not read
+VerifiableInference.Compilation.systemOf | The argument system for a model, a CompiledSide and a verifier
+VerifiableInference.Compilation.flashProveAtFiles | FlashProve, with the public files, the model's settings, and the honest provers and settings as arguments
+VerifiableInference.Compilation.finalCompletenessError | The completeness error bound
+VerifiableInference.Compilation.finalSoundnessError | The soundness error bound
+VerifiableInference.Compilation.finalBindingError | The bound on binding
+VerifiableInference.Compilation.honestQueryBudget | The budget of hash queries of the honest sampler, committer and prover
+VerifiableInference.Compilation.finalVerifierQueries | The verifier's hash-query bound in zero knowledge
+VerifiableInference.Compilation.finalReplyCount | The bound on the number of replies under one commitment, in zero knowledge
+VerifiableInference.Compilation.HonestProversAndSettingsAtFiles | FlashProve's honest provers and settings, as a record
+VerifiableInference.Compilation.FilesTaken | Conditions on the public files: in scope, read as parameters, exact match
+VerifiableInference.Compilation.FilesInUse | The public files from which the protocol can be built
+VerifiableInference.Compilation.finalVerifierProgram | The final verifier with BLAKE2b
+VerifiableInference.AtEveryRequest.Request | A request
+VerifiableInference.AtEveryRequest.WithinBudget | A bound on the hash queries of the honest sampler, committer and prover
+VerifiableInference.AtEveryRequest.Simulator | A second simulator, given information about each request
+VerifiableInference.AtEveryRequest.simulatedSteps | The simulated experiment after the commitment
+VerifiableInference.AtEveryRequest.simulatedExperiment | The simulated experiment
+VerifiableInference.AtEveryRequest.ZeroKnowledgeWhere | Zero knowledge for requests satisfying a hypothesis
+VerifiableInference.AtEveryRequest.ZeroKnowledgeBelowWhere | Zero knowledge for the requests that satisfy a hypothesis, with a uniform bound on the error for up to given numbers of queries and proofs
+VerifiableInference.Compilation.compiledSide | The honest committer and the honest prover
+VerifiableInference.Compilation.compiledScheme | The scheme
+VerifiableInference.Compilation.honestProversAndSettings | The honest provers and settings, as a closed term
+VerifiableInference.Token | A token
+VerifiableInference.RequestForm | The form of a request
+VerifiableInference.requestResult | The model's tokens on a request, or failure
+VerifiableInference.Compilation.finalZeroKnowledgeError | The bound in the zero-knowledge theorems: 2^-154
+VerifiableInference.Compilation.finalVerifier | The verifier of the final system
+VerifierAndGoals.andThen | Run one algorithm, then another on its result
+VerifiableInference.Compilation.compile_flashProve_verify | The verifier of the compiled FlashProve is the final verifier
+VerifiableInference.Compilation.blake2bHash | The concrete hash function, built from BLAKE2b
+PV.Program.verdictOf | From bytes to verdict
+VerifiableInference.Compilation.flashProvePublic | FlashProve's public side, at public files and settings
+VerifiableInference.Compilation.ofDescription | The public side constructed from a description, public files Z, settings s and a map from weights to indices
+VerifiableInference.Compilation.layoutOf | The fields of the inner compiler's input given by a description, as a layout
+VerifiableInference.Compilation.TypedProof | A proof as the compiled verifier reads it
+VerifierAndGoals.PublicFiles | Three public files, as bytes
+VerifierAndGoals.InScope | The public files in scope
+VerifierAndGoals.readConfig | The digest of the three public files, obtained by querying the hash function
+VerifierAndGoals.configString | The string hashed to obtain the digest of the three public files
+FlashProve.flashProveDescription | The description of FlashProve's protocol
+FlashProve.descriptionOfDataOnBytes | The description, with proofs in byte form
+FlashProve.flashProveData | The library's values for all parameters of the description
+FlashProve.flashProveDataNoExtractor | The same values, with an extractor that finds nothing
+VerifierAndGoals.asDescriptionFiles | The three public files, as one value of OnBytes.K.Pub
+FlashProve.FormBytes | The parsed files as they are stored on disk, and the further tokens
+Iop.Round | One round
+Iop.Shape | A Shape is the list of a protocol's rounds, in order
+Iop.RoundSplits | The round marking of a list of rounds
+FlashProve.protocolDataWellFormed | The test protocolDataWellFormed on the public files
+Desc.K15.linkProtocolChain | The link IOP's chain
+VerifiableInference.OnPublicFiles.innerSystem | The inner compiler: the argument system made from an input
+VerifiableInference.Rec.tokenArgumentSystem | The argument system on prompts and output tokens
+VerifiableInference.OnPublicFiles.schemeOverTypedOracles | The input's scheme, over the separate oracles
+VerifiableInference.OnPublicFiles.InnerCompilerInput | The inner compiler's input: a protocol of type HolographicProtocol, with its layout into hash queries written alongside it
+VerifiableInference.OnPublicFiles.innerInputOfThreeProtocols | The inner compiler's input whose protocol is made of the three IOPs
+TypedOracleCompiler.Compile.Batch.Cms.KeyRoot | The first table's key: its root and its out-of-domain sample
+TypedOracleCompiler.Compile.Batch.Cms.OfflineLinkOnlineProof | A compiled proof: its copy number and the three IOPs' proofs
+VerifiableInference.Compilation.flashFirstBlockTest | The test on first hash blocks for given public files
+VerifierAndGoals.readFiles | The reader of the public files
+Inst.Model.ScalesAndPolicy | The scales and the acceptance policy
+Inst.Model.AcceptancePolicy | The three numbers of the acceptance policy
+Inst.Model.AcceptancePolicy.exact | The policy of exact match
+VerifierAndGoals.settingsOfRead | The integer model's settings, computed from what the reader returned
+VerifierAndGoals.FreeLines | The numbers of the parameter file that InScope leaves free
+VerifierAndGoals.freeLinesOf | The eight free numbers of the parameter file, taken from the reader's output
+VerifierAndGoals.policyFile | The stored example's parameter file with the free numbers set to the given values
+OnBytes.K.Pub | A description's three public files, as bytes
+VerifiableInference.Compilation.HonestProversAndSettings | The honest provers and settings at every set of public files and model settings
+VerifiableInference.Compilation.honestProversAndSettingsOf | The honest provers and settings, built from the honest provers
+VerifiableInference.Compilation.honestProversAndSettingsAtFiles | FlashProve's honest provers and settings, built from the protocol's honest provers
+VerifiableInference.Compilation.neverBuiltRequest | The fall-back request
+VerifiableInference.Compilation.theProvers | The protocol's honest provers, which refuse when the request is not served
+VerifiableInference.Compilation.HonestProvers.refuseUnserved | The same provers, except that the online prover withholds everything when the request is not served
+VerifiableInference.Compilation.ServedAt | A served instance
+AtPublicFiles.AtFiles.HonestTerm.honestProvers | The honest provers of the protocol
+OnBytes.Prover.ThreeProvers | Three honest provers, one for each IOP of the protocol
+AtPublicFiles.AtFiles.protocolAtFiles | The protocol at the public files
+AtPublicFiles.AtFiles.HonestTerm.offlineProver | The offline honest prover
+AtPublicFiles.AtFiles.HonestTerm.linkProver | The link IOP's honest prover, at the number of the committer's coins minus one
+AtPublicFiles.AtFiles.HonestTerm.onlineProver | The online honest provers
+AtPublicFiles.AtFiles.HonestTerm.Parts | The arguments of the honest provers other than the public files
+AtPublicFiles.AtFiles.HonestTerm.thePartsAt | The named value of the offline prover's arguments, for given public files
+VerifiableInference.Compilation.HonestProvers.ofThreeProvers | The library's three provers as a value of HonestProvers
+FlashProve.committerCoinCountLessOne | The number of the committer's coins, minus one
+VerifiableInference.Compilation.CompiledPart | What compilation adds to the honest provers, for given public files and settings
+VerifiableInference.Compilation.compiledPartAtHonestProvers | What compilation adds at the honest provers
+VerifiableInference.Compilation.CompiledSettings | What the honest committer and prover choose in addition to their three IOP provers
+VerifiableInference.Compilation.FlashProtocol | The protocol of FlashProve at public files
+VerifiableInference.Compilation.FlashReading | A value of FlashProve's public reading
+VerifiableInference.Compilation.flashLayout | The layout of FlashProve at a value of the public reading
+VerifiableInference.Compilation.theSettings | The settings of FlashProve
+VerifiableInference.Compilation.settingsOf | The settings for any layout, given the salts' prefixes
+VerifiableInference.Compilation.SearchLimits | The three search limits
+VerifiableInference.Compilation.writtenLimits | The search limits of FlashProve
+VerifiableInference.Compilation.theCoinBound | The bound on the honest committer's single sampled number
+VerifiableInference.Compilation.noProofForm | The form that contains no proof
+VerifiableInference.Compilation.isNoProof | A form contains no proof
+VerifiableInference.Compilation.TableBudgetFits | The proofs open no more columns of each table than its budget
+AtPublicFiles.Premises.indexPrivacyNumbers | The limit on columns of one table, and the columns that each verifier reads
+VerifierAndGoals.completenessErrorBound | The maximum probability with which the honest committer and prover may fail
+VerifierAndGoals.honestBudget | The maximum number of hash queries that one run each of the honest sampler, committer and prover may make together
+VerifierAndGoals.queryBudget | 2^64 hash queries, beyond which the zero-knowledge theorems give no bound
+VerifierAndGoals.errorFactorPerQuery | The factor in the soundness error
+VerifierAndGoals.verifierQueryAllowance | The term added to the adversary's and the parser's queries in the soundness error
+VerifierAndGoals.soundnessErrorInQueries | The soundness error
+VerifierAndGoals.bindingErrorInQueries | The binding error
+VerifierAndGoals.levelError | The larger of the soundness error and the binding error
+VerifiableInference.Compilation.flashProveWiring | FlashProve's layouts, and the instance used when no instance can be built from the request
+VerifiableInference.Compilation.wiringOf | A CompilerWiring from a fall-back instance and a family of layouts that agrees with the description's input
+VerifiableInference.Compilation.bytesWriter | The writer of a proof as submitted
+VerifiableInference.Compilation.formatOf | The proof format given by a writer and a parser of a description
+AtPublicFiles.Bridge.proversOf | The three honest provers, in the form used by the statements on the compiled argument
+AtPublicFiles.AtFiles.FullSizeMatrix | The matrices of the full-size shape over the extension field
+Iop.Honest | An honest prover of an IOP
+Iop.BatchHonestProver | An honest prover of a batch IOP
+AtPublicFiles.Bridge.Family | A family of honest provers indexed by the copy number
+OnBytes.Flat.Files.fixedMessageProvers | Provers that send the fixed messages
+ProofFile.Honest.Term.familyOf | The same honest prover for every copy number
+AtPublicFiles.AtFiles.HonestTerm.offlineDescription | The offline description's source, numbers and later places, from the three public files
+AtPublicFiles.AtFiles.HonestTerm.OfflineDescription | The arguments from which the offline description is built
+AtPublicFiles.AtFiles.keyFileDescription | The offline IOP's description, given by the library's Key.descriptionFromSource
+AtPublicFiles.AtFiles.HonestTerm.Parts.prover | The offline prover for a description, with the four proximity tests
+AtPublicFiles.KeyFile.keyProver | The offline IOP's honest prover, with each of its sides at its place
+AtPublicFiles.KeyFile.KeyParts | The twenty-five fields of the offline prover
+AtPublicFiles.KeyFile.sharedChainProverSidesInOrder | The prover's sides of the shared chain, in the order of their places
+AtPublicFiles.KeyLay.withTests | The offline prover's arguments with the four proximity tests in place
+AtPublicFiles.KeyThread.rangesTestJob | The data of the offline prover's proximity test on the ranges
+AtPublicFiles.KeyLay.proverSideOfGuardedSending | The offline prover's side for the proximity test of the second chain, under a guard
+AtPublicFiles.KeyLay.withTestsOnUAndOmega | The offline prover's arguments with the two tests of the shared chain in place
+AtPublicFiles.KeyLay.proverSideOfTestOnU | The offline prover's side for the test on the group U
+AtPublicFiles.KeyLay.proverSideOfTestOnOmega | The offline prover's side for the test on the group Omega, under a guard
+AtPublicFiles.AtFiles.HonestTerm.offlineTestParametersOnU | The parameters of the offline prover's test on the group U
+AtPublicFiles.AtFiles.HonestTerm.offlineTestOnOmega | The parameters of the offline prover's test on the group Omega
+H2U.proximityTestParametersAt | The parameters of a proximity test at a place
+AtPublicFiles.AtFiles.HonestTerm.offlineSenders | The offline prover's arguments for a description
+AtPublicFiles.KeyValues.withSendingsAndLookups | Sixteen of the offline prover's fields
+AtPublicFiles.KeyValues.indexMaskSending | The data for sending the index-mask message
+AtPublicFiles.KeyValues.multiplicitiesSending | The data for sending the multiplicities message
+AtPublicFiles.KeyValues.batchedRowsSending | The data for sending the message W
+AtPublicFiles.KeyValues.constraintRowsAtClaimPoints | The rows that the batching combines
+AtPublicFiles.AtFiles.HonestTerm.withStoredColumnsAndPlan | Five more fields of the offline prover's arguments
+AtPublicFiles.AtFiles.HonestTerm.storedColumn | A column of the stored table
+AtPublicFiles.AtFiles.HonestTerm.matrixReader | The index's reader
+AtPublicFiles.KeyValues.matrixEntryOf | The matrix read from a side's input
+AtPublicFiles.KeyValues.multiplicitiesGroups | The groups of the multiplicities message
+AtPublicFiles.AtFiles.HonestTerm.offlineProverCoinCounts | The offline prover's coin counts, at the written sizes
+AtPublicFiles.AtFiles.HonestTerm.fallbackSenders | Arguments that no prover reads
+AtPublicFiles.KeyPartsIdle.fixedKeyParts | A fixed value of KeyParts
+AtPublicFiles.AtFiles.offlineProverWithEncodedTable | The offline prover, with the encoder's table
+AtPublicFiles.AtFiles.offlineProverInThreeProtocols | The offline prover, with the type of the first prover of the protocol structure, for every P
+AtPublicFiles.AtFiles.offlineProverAtFilesDecision | The offline prover, with the type of an honest prover of the offline IOP at the public files
+AtPublicFiles.AtFiles.offlineOneInstanceProverAtFiles | The offline IOP's single-run prover at the public files, over a description
+AtPublicFiles.AtFiles.offlineOneInstanceProver | The offline IOP's single-run prover (of offlineBatchProver), with its instances pulled back along keyInstanceOfOutOfDomainSample
+AtPublicFiles.AtFiles.offlineBatchProver | The honest batch prover (honestBatchProverOfFile) over the offline IOP's description, at the description's own instance type
+AtPublicFiles.AtFiles.HonestTerm.offlineStart | The first state of the offline prover's shared chain
+AtPublicFiles.AtFiles.HonestTerm.RunValue | A run value
+AtPublicFiles.AtFiles.HonestTerm.runValueBytes | A run value as bytes
+AtPublicFiles.AtFiles.linkProverAtFiles | The explicit honest prover of the link
+OnBytes.LinkSim.AtHome.explicitLinkProver | The link IOP's honest prover, given by a next-message function
+ProofFile.onlineFirstChainAt | The online IOP's first chain, from the public part
+AtPublicFiles.AtFiles.HonestTerm.onlineProverAt | The online provers for a value of type OnlineReturn, one for each copy number
+AtPublicFiles.AtFiles.onlineProversOfCommitter | A family of online provers, along the library's instance map instanceAsPlainRecord
+AtPublicFiles.AtFiles.onlineProversAlongInstanceMap | A family of online provers of the protocol for one request, pulled back along an instance map
+AtPublicFiles.AtFiles.onlineProversAtOwnInstances | A family of online provers at the online IOP's round data and fixed plain parts
+AtPublicFiles.Bridge.honestProversByCopyNumber | The family of honest provers of honestBatchProverOfFile for one request, indexed by the copy number n
+ProofFile.Honest.Term.onlineMaker | onlineProverFromPublicFiles applied to onlineFilling and the three public files
+ProofFile.Honest.onlineProverFromPublicFiles | The function that builds the online prover from a value of OnlineProverParts
+ProofFile.Honest.OnlineProverWithDescription | The honest prover at the online IOP's own description
+ProofFile.Honest.Term.OnlineReturn | The type of what onlineProverFromPublicFiles returns at onlineFilling when it returns no error
+ProofFile.Honest.Term.onlineFilling | The value of OnlineProverParts for the online prover
+ProofFile.Honest.OnlineProverParts | The parts of the honest prover that other modules supply, as fields
+ProofFile.Honest.onlineProverPartsInUse | A value of OnlineProverParts, generic in the type of the private input W₀
+ProofFile.Honest.LongLots.plain | Five lists of sides of the online prover
+ProofFile.Honest.openHonest | The functions that onlineProverPartsInUse leaves open: claims, rows, key points
+ProofFile.Honest.Term.matrixInput | What onlineFilling reads from a matrix
+ProofFile.Honest.Term.tableCoins | The committer's randomness, as the online prover reads it
+ProofFile.Honest.honestBatchProverOfFile | The honest prover of a written IOP
+ProofFile.Honest.KeyAndJoiningRoundMessages | What the shared chain's sides are given, and what the challenge-free round before each chain sends
+ProofFile.Honest.sharedPartStrategyTrackingVerifier | The shared part's strategy
+ProofFile.Honest.requestStrategyTrackingVerifier | A batch position's strategy
+ProofFile.Honest.sharedChainStart | The shared chain's progress at its start
+ProofFile.Honest.ready | The preparation of a run
+ProofFile.Honest.readyShared | The shared chain prepared without an instance
+ProofFile.Honest.chainStartOrHalted | A chain's progress at its start, or halted
+ProofFile.Honest.requestStrategyOverSeparateChain | A batch position's strategy over a first or second chain that is followed by further rounds
+ProofFile.Honest.sharedStrategyOverSharedChain | The shared part's strategy over a shared chain
+ProofFile.Honest.advanceOverRounds | A ChainProgress advanced over a list of steps
+ProofFile.Honest.progressAfterChallenge | The state of a chain after the round's challenge
+ProofFile.Honest.ChainProgress | The state of a chain between two rounds, including the prover's and the verifier's states
+ProofFile.Honest.ChainProgress.say | The message of a round, or its fixed substitute
+ProofFile.Honest.Step | One round of a chain, as read in a prover's run
+ProofFile.Honest.Step.tell | A round's message
+ProofFile.Honest.Prover | The honest prover of a written IOP's three chains
+ProofFile.Honest.Local | The input of a prover's side in the first or the second chain, with four components
+ProofFile.Honest.Common | The input of a prover's side in the shared chain, with three components
+ProofFile.Honest.ProverCoinCounts | The counts of a prover's coins
+ProofFile.Honest.Placed | The prover's side of a sub-protocol, at its place
+ProofFile.Honest.Part | The prover's side of consecutive rounds
+ProofFile.Honest.Move | The prover's side of one round
+ProofFile.Honest.K1.proverSideOfSending | The prover's side of an oracle message with out-of-domain sample
+ProofFile.Honest.K3.proverSideOfLookupInChain | The prover's side of one lookup
+ProofFile.Honest.K12.proverSideOfProximityTest | The prover's side of a proximity test
+ProofFile.Honest.K13.proverSideOfClaimCombination | The prover's side of the committed-table claim merge
+ProofFile.Honest.K14.proverSidesOfSharedRounds | The prover's side of the shared chain's own rounds
+ProofFile.Honest.K14.proverSidesOfSharedSendings | The prover's side of the shared chain's two oracle messages
+VerifiableInference.Compilation.neverBuiltInstance | The fall-back request, as an instance
+VerifiableInference.Compilation.CompilerWiring.layoutAtReading | The layout at a value of the public reading
+VerifiableInference.Compilation.saltStartsAtHonestProvers | The format's salt prefixes for honestProvers
+VerifiableInference.Compilation.formatSaltStartsGivenDescriptions | The format's salt prefixes at honestProversGivenDescriptions
+VerifiableInference.Compilation.saltStartsAlongEquation | Transport of salt prefixes along an equality of provers
+VerifiableInference.Compilation.honestProversGivenDescriptions | Three provers from a description, a value of type OnlineReturn, places and a first chain
+VerifiableInference.Compilation.zeroSaltStarts | All-zero salt prefixes
+VerifiableInference.Compilation.SaltStarts.underRefusal | Of the provers, the salt prefixes use only the types of coins, so they carry over to provers that refuse
+VerifiableInference.Compilation.SaltStarts | The public prefixes of a compiled run's salts and the run values from which they are computed
+VerifiableInference.Compilation.flashProveRequestLeafSaltLayout | The format's layout of a request leaf's salt at FlashProve
+VerifiableInference.Compilation.formatRequestLeafSaltLayout | What follows a batch position's value, in the format
+VerifiableInference.Compilation.RequestLeafSaltLayout | What follows a batch position's value in a request tree's leaf
+VerifiableInference.Compilation.theLeafFiller | The body of a leaf beyond the word's length in FlashProve: the empty list of bits
+VerifiableInference.Compilation.baseCoinNumbers | The numbers on coins
+VerifiableInference.Compilation.baseReading | The public reading at the all-zero digest and the empty list
+VerifiableInference.Compilation.honestSide | The record from which the compiler builds the honest committer and prover
+OnBytes.FrontRoad.committerAndProverOverOneHash | An argument whose committer and prover query an answer's first hash block, and the other blocks where a test returns true
+VerifiableInference.Compilation.filesInUse_stored | The stored full-size example satisfies FilesInUse
+VerifiableInference.AtEveryRequest.Outcome | The bit of a request
+VerifiableInference.AtEveryRequest.requestOutcome | The bit, as a function of the weights and the request
+VerifiableInference.AtEveryRequest.HandsOutNoProof | The prover outputs no proof at the specified requests
+VerifiableInference.canServe_nowhere_atHaltingWeights | At some weights no request can be served
+VerifiableInference.Compilation.someRequestIsServedInUse | For the files of every public setup, some request is served for some weights
+VerifiableInference.Compilation.SomeRequestIsServedInUse | For the files of every public setup, some request is served for some weights
+VerifiableInference.rejectsEmptyProof | The compiled verifier rejects the empty proof
+VerifiableInference.Compilation.verdictOf_eq_finalVerifierProgram | If the claim can be read, verdictOf returns the value of finalVerifierProgram
+VerifiableInference.OnPublicFiles.hashOf | The hash function on bit strings induced by a function on bytes
+VerifiableInference.leanVerifier | The Lean verifier: the compiled verifier with BLAKE2b
+VerifiableInference.sound | Soundness
+VerifiableInference.soundAndBinding | Soundness with binding
+VerifiableInference.zeroKnowledgeAtEveryRequest | Zero knowledge at every request, with one bit revealed for each
+VerifiableInference.zeroKnowledgeAtEveryRequest_of_lines | The two theorems imply zero knowledge at every request
+VerifiableInference.refusedHandsOutNoProof | For a refused request the honest prover returns only the empty proof
+VerifiableInference.repliesFit | The stated number of replies, the columns that they open and the honest committer's and prover's hash queries fit within their budgets
+VerifiableInference.PublicSetup | The public setup: three public files
+VerifiableInference.flashProve | FlashProve at a public setup: the input to compile
+VerifiableInference.storedSetup | The stored public files, as a public setup
+VerifiableInference.soundAndBinding_stored | Soundness and binding, for the stored public files
+VerifiableInference.sound_stored | Soundness, for the stored public files
+VerifiableInference.complete_stored | Completeness, for the stored public files
+VerifiableInference.zeroKnowledge_stored | Zero knowledge, for the stored public files
+VerifiableInference.leanVerifier_eq | The Lean verifier is finalVerifierProgram
+VerifiableInference.executableVerifier_eq_leanVerifier | The executable verifier equals the Lean verifier
+VerifiableInference.executableVerifier | The executable verifier, with BLAKE2b in place of the random oracle
+VerifiableInference.verdictOf_eq_executableVerifier | verdictOf parses the claim and applies the executable verifier
+VerifiableInference.verdictOf_eq_leanVerifier | The same equality, stated for verdictOf
+VerifiableInference.onlineRunsPerCopy | The number of runs of the online IOP per copy in the honest settings
+VerifiableInference.ArgumentSystem.ofArgument | An argument system made from a scheme
+VerifiableInference.Rec.tokenScheme | The scheme on prompts and output tokens
+VerifiableInference.Rec.digestKeyScheme | The scheme with the key's digest as the commitment
+ZKCP.Arg.digestKey | A scheme whose verifier holds only a digest of its key
+ZKCP.verifyDigestKey | The check of the key in the proof against the commitment
+ZKCP.Arg.coinsFirst | The committer's random choices, sampled first
+ZKCP.Arg.buildInstance | Building the instance from the request
+Rom.schemeOverOneHashFunction | The separate oracles, answered by the one hash function
+TypedOracleCompiler.Compile.Batch.Cms.outOfDomainSeedIs | One out-of-domain seed, recomputed and compared
+TypedOracleCompiler.Compile.Batch.Cms.verifyOfflineProof | The offline IOP's verifier
+TypedOracleCompiler.Compile.Batch.Cms.verifyLinkProof | The link IOP's verifier
+TypedOracleCompiler.Compile.Batch.Cms.verifyOnlineProof | The online IOP's verifier
+VerifiableInference.completeOnCanServe | Completeness, for requests that can be served and whose claimed output is the model's
+VerifiableInference.zeroKnowledgeOnCanServe | Zero knowledge, for requests that can be served and whose claimed output is the model's
+VerifiableInference.CompleteOn | Completeness on a stated set of requests
+VerifiableInference.CanServe | The requests that can be served
+VerifiableInference.ZeroKnowledgeOn | Zero knowledge on a stated set of requests
+VerifiableInference.Simulator | A simulator given, for each request, only the request itself
+VerifiableInference.simulatedSteps | The simulated experiment after the commitment, for such a simulator
+VerifiableInference.simulatedExperiment | The simulated experiment for such a simulator
+TypedOracleCompiler.Compile.Batch.recomputeChainOfProof | Recomputation of the Fiat–Shamir chain of one proof string
+TypedOracleCompiler.Compile.Batch.proofHasStrictFormat | The strict format of a proof string for one IOP
+TypedOracleCompiler.Compile.Batch.checkPrunedOpenings | After the chain: the checks of the openings, the check in the tree over the batch, and the IOP verifier's decision
+TypedOracleCompiler.Compile.Batch.forestsOf | The openings to verify, tree by tree
+TypedOracleCompiler.Compile.Batch.afterF | The joint verification, the check in the tree over the batch, and the IOP verifier's decision

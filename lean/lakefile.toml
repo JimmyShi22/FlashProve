@@ -1,0 +1,42 @@
+# Copyright 2026 Anthropic PBC
+# SPDX-License-Identifier: Apache-2.0
+# Lake project of the Lean library. First check this copy:
+#   python3 -B scripts/check.py --only tree
+# Then "lake exe cache get" and "lake build": see CHECKING.md.
+# The main library has every module below its 28 directories, imported or not, and Ladder.lean.
+name = "verifiableInference"
+version = "0.16.0"
+license = "Apache-2.0"
+defaultTargets = ["Library", "AtFullSide"]
+
+[leanOptions]
+pp.unicode.fun = true
+relaxedAutoImplicit = false
+autoImplicit = false
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "5e932f97dd25535344f80f9dd8da3aab83df0fe6"
+
+[[lean_lib]]
+name = "Library"
+globs = [
+  "Alg.+", "Blocks.+", "Cb.+", "Cm.+", "Code.+", "Compile.+", "CompileK.+", "Cond.+", "Decl.+",
+  "E2E.+", "Fmt.+", "Hash.+", "Hiop.+", "Inst.+", "IntegerModel.+", "Iop.+", "Ior.+", "Johnson.+",
+  "Ladder", "Ladder.+", "OnBytes.+", "Policy.+", "Prob.+", "Rom.+", "Run.+", "ThirdParty.+",
+  "Top.+", "VerifiableInference.+", "ZKCP.+",
+]
+
+# A side library, a default target too: Lean compiles its files with a larger thread stack.
+[[lean_lib]]
+name = "AtFullSide"
+globs = ["AtFullSide.+"]
+moreLeanArgs = ["--tstack=131072"]
+
+# The closed lines of the run on shapes at the stored full-size files (ShapeLines/README.md): heavy.
+# No default target. The thread stack: one of its lines ends with "deep recursion" at 128 MiB.
+[[lean_lib]]
+name = "ShapeLines"
+globs = ["ShapeLines.+"]
+moreLeanArgs = ["--tstack=262144"]

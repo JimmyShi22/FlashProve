@@ -1,0 +1,30 @@
+number in its chain, and address	kind	what it does	how often	rounds	oracle messages sent
+0 ⟨1, –, 1⟩	Oracle message with out-of-domain sample	The prover sends an oracle message of mask entries; out-of-domain seeds are sampled and answered.	1	2	–
+1 ⟨1, –, 2⟩	Oracle message with out-of-domain sample	The prover sends the oracle message that the lookups use; out-of-domain seeds are sampled and answered. A group is opened.	1	2	–
+2, 8 ⟨1, i, 0⟩	none	A lookup's segment starts. No round.	2	0	–
+3, 9 ⟨1, i, 1⟩	none	No round. Fixes which entries of the two oracle messages above are the masks of the masked scalars of the lookup's rounds.	2	0	–
+4, 10 ⟨1, i, 2⟩	Product-tree lookup argument	Lookup argument number i.	2	9,581 and 9,220	–
+5, 11 ⟨1, i, 3⟩	none	No round, nothing sampled. It receives the segment's claims and turns them into linear constraints and claims on the looked-up values.	2	0	–
+6, 12 ⟨1, i, 4⟩	none	No round; it checks nothing here.	2	0	–
+7, 13 ⟨1, i, 5⟩	none	The segment ends. No round.	2	0	–
+14 ⟨1, –, 4⟩	none	No round. All lookups' linear constraints are imposed on the group that the next test tests.	1	0	–
+15 ⟨1, –, 5⟩	Proximity test with linear constraints	Proximity test on that group.	1	23	–
+16 ⟨1, –, 13⟩	Committed-table claim merge	The lookups' claims on looked-up values become claims on the committed table; one sampled element and a masked sumcheck reduce these to one.	1	20	–
+17 ⟨1, –, 14⟩	Oracle message with out-of-domain sample	The prover sends the chain's last oracle message; out-of-domain seeds are sampled and answered. A group is opened for it and one linear constraint imposed on it.	1	2	–
+18 ⟨1, –, 15⟩	none	The chain's end: one round named SEAL in which nothing is sent or read; rejects if a count of claims is still outstanding, if a group other than the one that the third chain tests is untested, or if a sampled tenant outside that group is in no tested group.	1	1	–
+0 ⟨2, –, 0⟩	none	No round. It contains public checks.	1	0	–
+1 ⟨2, –, 1⟩	Committed-table claim reduction	The verifier samples a point.	1	1	–
+2 ⟨2, –, 2⟩	Oracle message with out-of-domain sample	The prover sends an oracle message whose tenants are the committed table's rows folded at part of that point, and a mask; out-of-domain seeds are sampled and answered.	1	2	–
+3 ⟨2, –, 3⟩	Committed-table claim reduction	No round. For each out-of-domain answer of the committed table, one linear constraint on the folded tenant.	1	0	–
+4 ⟨2, –, 4⟩	Committed-table claim reduction	The verifier samples positions; the committed table is opened there; one linear constraint on the folded tenant for each position.	1	1	–
+5 ⟨2, –, 5⟩	Oracle message with out-of-domain sample	The prover sends two further oracle messages, the second a mask; out-of-domain seeds are sampled and answered.	1	2	–
+6 ⟨2, –, 6⟩	Committed-table claim reduction	No round. The new tenants are assigned to the two groups that the two proximity tests test.	1	0	–
+7 ⟨2, –, 7⟩	Committed-table claim reduction	The verifier samples a second point.	1	1	–
+8 ⟨2, –, 8⟩	Committed-table claim reduction	The prover sends one masked value; the linear constraint that equates the values of the two tenants at the two points is split into one constraint for each group.	1	1	–
+9 ⟨2, –, 9⟩	Proximity test with linear constraints	Proximity test on the first group, with all linear constraints imposed on it.	1	35	–
+10 ⟨2, –, 10⟩	Proximity test with linear constraints	Proximity test on the second group.	1	24	–
+11 ⟨2, –, 11⟩	none	The chain's end: one round named SEAL in which nothing is sent or read; rejects if a group is untested or a sampled tenant is in no tested group.	1	1	–
+0 ⟨3, –, 0⟩	Committed-table claim reduction	No round. An oracle message of the second chain is adopted and joins the group that this chain's proximity test tests; one linear constraint on it and another tenant is added.	1	0	–
+1 ⟨3, –, 1⟩	none	No round. Checks that every oracle message which the next test opens and this chain has not sent is declared as taken from the chain that sent it.	1	0	–
+2 ⟨3, –, 2⟩	Proximity test with linear constraints	Proximity test on that group.	1	30	–
+3 ⟨3, –, 3⟩	none	The chain's end, no round; rejects if a group is untested or a sampled tenant is in no tested group.	1	0	–

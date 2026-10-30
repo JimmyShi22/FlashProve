@@ -1,0 +1,28 @@
+Soundness (§1) | target |  | #sec-soundness
++ For | anyone who relies on a proof
++ Given | - a committer, which returns a commitment to weights (256 bits)
++  | - a prover, which returns a prompt, output tokens and a proof
++  | - together they make at most t queries to the hash function
++ Event | - the verifier accepts
++  | - the output tokens are not those of the model with the weights that a fixed extractor reads from the commitment and the committer's hash queries, on the prompt
++ Then | Pr[event] ≤ ε(t), over a hash function sampled uniformly at random and the committer's and the prover's coins
++ In Lean | VerifiableInference.Sound
+Completeness (§6.1) | target |  | #sec-completeness
++ For | the provider
++ Given | - weights
++  | - a request that can be served (CanServe), whose output tokens are the model's
++ Event | the verifier rejects the honest proof
++ Then | Pr[event] ≤ α
++ In Lean | VerifiableInference.CompleteOn
+Zero knowledge (§6.3) | target |  | #sec-zk
++ For | the provider
++ Given | - weights
++  | - a malicious verifier with at most t queries to the hash function, which is given the commitment and up to N proofs
++  | - each request may depend on the verifier's view so far and on the weights; it can be served (CanServe), and its output tokens are the model's
++ Then | one simulator, fixed before the weights, that gets each request and nothing about the weights produces the verifier's view up to statistical distance ζ, for t and N up to two given numbers (in the theorem zeroKnowledgeOnCanServe: 2^64 hash queries and 688,127 replies)
++ Not covered | - The simulator may depend on the three public files, and a fitted model's scale file is made from its weights: what these files reveal about the weights is not covered
++  | - Whether a request can be served depends on the weights, and that is not hidden
++  | - The statement by itself says nothing about a refused request: with refusedHandsOutNoProof it gives zero knowledge at every request, within the same bound, in which the simulator is told one bit for each request: served or refused (a request is refused if it is ill-formed, if the model has no result on it, or if its result is other tokens)
++  | - All that is not covered: §6.3
++ Remark | The compiled system has no public parameters (PublicParameters := Unit, §4.3), so at its start the simulator is given nothing about the weights
++ In Lean | VerifiableInference.ZeroKnowledgeOn

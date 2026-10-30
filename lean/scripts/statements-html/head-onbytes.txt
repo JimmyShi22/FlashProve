@@ -1,0 +1,2 @@
+The declarations of `OnBytes/`: the library's routines on byte strings.
+What these theorems reach and what they do not: [OnBytes/THEOREMS.md](OnBytes/THEOREMS.md).

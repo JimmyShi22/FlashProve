@@ -1,0 +1,1204 @@
+== Final statements | sec-top
+> Six theorems (the repository's other pages call them the six lines) and one definition, the Lean verifier, about one argument system, `compile (flashProve setup)`. In each of them:
+- `setup` is a public setup (`PublicSetup`): three public files that meet four conditions (see [A public setup](#sec-setup) below and `FilesInUse` in [§4.4](#sec-final));
+- `flashProve setup` is the input of `compile` for these files.
+> Both are described on cards in the next section.
+> **The six theorems:**
+VerifiableInference.sound | proved
+VerifiableInference.soundAndBinding | proved
+VerifiableInference.completeOnCanServe | proved
+VerifiableInference.zeroKnowledgeOnCanServe | proved
+VerifiableInference.refusedHandsOutNoProof | proved
+VerifiableInference.repliesFit | proved
+> In the theorems on soundness, binding, completeness and zero knowledge, the hash function is sampled at random. The honest committer and prover are Lean definitions, not programs.
+> **The Lean verifier:**
+VerifiableInference.leanVerifier | definition
+> As a definition, `leanVerifier` cannot be run: parts of the verifier's term are defined using the axiom of choice, including the injective encoding of its hash queries. We therefore provide a second, executable verifier written in Lean, `executableVerifier`, and prove its equality to `leanVerifier`.
+VerifiableInference.executableVerifier_eq_leanVerifier | proved
+== What the theorems refer to | sec-beside
+=== A public setup | sec-setup
+> A public setup consists of three public files (a parameter file, a layout file and a scale file) that satisfy four conditions (`FilesInUse`, [§4.4](#sec-final)):
+- They are in the verifier's scope. The layout file is the layout file of the stored full-size example. The parameter file agrees byte for byte with that example's parameter file, except for eight numbers: five numbers of the normalizations and the three numbers of the acceptance policy. The third condition below fixes the three policy numbers, so only the five numbers of the normalizations are free in the parameter file.
+- They parse without error.
+- They specify the exact-match policy: every output token must be the model's own choice (greedy decoding). The verifier does not check this condition.
+- They pass the test `protocolDataWellFormed`, which the verifier also performs: the protocol's data can be built from them without error, no list of rounds is empty, the data for the key and for the proof have the full-size depth, and the sizes lie within fixed limits.
+> The library defines one public setup, `storedSetup` ([§4.4](#sec-final)), as a Lean term. No theorem relates it to a file on disk; a program outside Lean compares it with the files of the shipped example.
+> **Three definitions that the theorems use.** A fourth, `onlineRunsPerCopy`, is in [§6.4](#sec-honest).
+VerifiableInference.PublicSetup | definition
+VerifiableInference.flashProve | definition
+VerifiableInference.Compilation.honestProversAndSettings | definition
+> **The numbers in these theorems:**
+- `finalSoundnessError q` = 16 (q + 1 + 2^23) / 2^128 + (q + 2^23 + 3)^2 / 2^256, about q / 2^124 + 2^-101
+- `finalBindingError q`: about q / 2^124 + 2^-100
+- `finalCompletenessError` = 2^-40
+- `finalZeroKnowledgeError` = 2^-154
+- `finalVerifierQueries` = 2^64
+- `finalReplyCount` = 688,127
+- `honestQueryBudget` = 2^48
+> [§4.4](#sec-final) specifies whose hash queries q counts.
+> **At the library's stored example of the public files, with no argument `setup`:**
+VerifiableInference.soundAndBinding_stored | proved
+! fold The stored public files, and the theorems on soundness, completeness and zero knowledge for them
+VerifiableInference.storedSetup | definition
+VerifiableInference.sound_stored | proved
+VerifiableInference.complete_stored | proved
+VerifiableInference.zeroKnowledge_stored | proved
+! fold-end
+== 1. Soundness | sec-soundness
+! whole VerifiableInference.Sound
+!- A committer outputs a commitment of 256 bits. The commitment, together with the committer's queries to the hash function and their answers, determines at most one choice of weights: a fixed extractor, a function that is not shown to be computable, outputs it from these.
+!- Let t₁ bound the committer's queries, and consider any prover that runs afterwards and makes at most t₂ queries. Except with probability at most ε(t₁ + t₂), over the hash function and the random choices of the committer and the prover, the output tokens that the verifier accepts are the output of the model with these weights on the prompt. This bounds the probability of a false accept, not the conditional probability that an accepted output is false.
+!- By a separate clause ([§1.1](#sec-binding)), an opener with at most t₂ queries outputs an opening to other weights with probability at most ε(t₁ + t₂). The same weights can have many commitments, because the honest committer computes the commitment from the weights and its own randomness.
+> Randomized and deterministic algorithms, queries to the hash function, query logs and probabilities are those of the random oracle model ([§8](#sec-hashes)).
+VerifiableInference.ArgumentSystem | definition
+VerifiableInference.ArgumentSystem.IsModelOutput | definition
+VerifiableInference.Sound | target
+> **The theorem `sound`.** For every public setup, the compiled argument system `compile (flashProve setup)`, with the model settings read from the public files, satisfies `Sound` (above) with the error function `finalSoundnessError`.
+> **Expanded.** There is an extractor such that, for every committer with at most t₁ queries to the random oracle and every prover with at most t₂ queries, the following event has probability at most `finalSoundnessError (t₁ + t₂)`: the verifier accepts output tokens that are not the model's output with the weights that the extractor outputs, given the commitment and the committer's queries.
+- The probability is taken over the random oracle and the coins of the two adversaries.
+- The prover chooses the prompt and the output tokens, and the committer passes its state to the prover.
+- If the extractor outputs no weights, every accepted proof counts toward this event.
+> **Remark.** The proof of `sound` uses sound_of_verify_at (Johnson/Goal/Skeleton/SoundOfVerifyAt.lean:69), the soundness theorem for `verify`, FlashProve's verifier. Its three hypotheses are the fields of `FilesTaken`. Soundness of `compile` at `flashProveAtFiles` follows from sound_of_verify_at for arbitrary honest provers and settings (Johnson/Face/FinalSoundProof.lean:24).
+=== 1.1 With a binding commitment | sec-binding
+> `SoundAndBinding` has a second clause, on openings of the commitment. An opening of a commitment to given weights is a pair of these weights and commitment randomness on which `commit` returns that commitment. The clause states the following. For every committer with at most `committerQueries` queries, and every opener with at most `proverQueries` queries that is given the committer's state, the probability that the opener outputs an opening of the committer's commitment to weights that the extractor does not output is at most ε(`committerQueries` + `proverQueries`).
+> `SoundOpened` is a statement without an extractor. `SoundAndBinding` with error ε implies `SoundOpened` with error 2 ε. The library proves `SoundOpened` for the compiled system, for public files that satisfy `FilesInUse`, with the bound 2 · `finalBindingError` (`finalSoundOpened_value`, AtFullSide/Face/FinalBindingAtTheValue.lean; no card on this page).
+VerifiableInference.SoundAndBinding | target
+> **The theorem `soundAndBinding`.** For every public setup, `compile (flashProve setup)` satisfies `SoundAndBinding` (above) with the error function `finalBindingError`. The two clauses share one extractor and one committer. In both clauses the bound is `finalBindingError (t₁ + t₂)`, where t₁ bounds the committer's queries to the random oracle and t₂ those of the prover or the opener. For this system, the commitment randomness in an opening is a single number.
+VerifiableInference.SoundOpened | target
+VerifiableInference.sound_of_soundAndBinding | proved
+VerifiableInference.soundOpened_of_soundAndBinding | proved
+== 2. The model | sec-model
+> The model is a single function, the field `nextToken` of the argument system ([§1](#sec-soundness)).
+- Its inputs are weights and a list of tokens. The quantization parameters are fields of the model settings ([Appendix C](#sec-app-model)), and the model settings are not part of the weights.
+- It returns the next token, or nothing if the model is undefined on these tokens.
+- It does not query the hash function and uses no randomness.
+- The soundness statements refer to it only through `IsModelOutput` ([§1](#sec-soundness)).
+> FlashProve's model is defined in [Appendix C](#sec-app-model).
+== 3. The protocol | sec-protocol
+> The verifier is compiled from a protocol, a linkable holographic IOP, which does not query the random oracle. Such a protocol has an encoder with a decoder, an out-of-domain sample on each encoding, and three interactive oracle proofs (IOPs): offline, link and online. The general definition follows; FlashProve's protocol is defined in [Appendix A](#sec-app-protocol).
+> Credits, among them the paper that this protocol builds on: lean/CREDITS.md. The idea is public: holographic IOPs and their compilation to arguments in the random oracle model are defined in A. Chiesa, D. Ojha, N. Spooner, "Fractal: Post-Quantum and Transparent Recursive Proofs from Holography", ePrint 2019/1076 (eprint.iacr.org/2019/1076). This page's design, and its paragraph "Checking the proofs yourself", are modelled on veil.succinct.xyz (Succinct).
+Iop.HolographicProtocol | definition
+VerifiableInference.Compilation.HonestProvers | definition
+Iop.InteractiveOracleProof | definition
+Iop.BatchInteractiveOracleProof | definition
+VerifiableInference.Compilation.Model | definition
+== 4. The compiler | sec-compiler
+> This section presents the library's compiler. It consists of an inner and an outer compiler ([§4.3](#sec-compiler-tree)).
+> **The inner compiler.** It is defined for every input of type `InnerCompilerInput`. Such an input consists of any protocol of type `HolographicProtocol` ([§3](#sec-protocol)) and further data written by hand for that protocol, including the layout of its rounds and openings in hash queries. `innerSystem` constructs an argument system from such an input, and `innerCompiledVerifier` is the verifier of that system.
+> **The outer compiler, `compile`.** It is defined for every input of type `Compilable`. Its verifier performs a test on the public files, parses the proof (the field `parse` of the proof format, [§4.3](#sec-compiler-tree)), performs two readings of the public files (queries to the hash function at strings computed from them), and then runs `innerCompiledVerifier`. Its committer and prover are constructed from the honest provers in its input. `compile` is not a compiler for arbitrary IOPs: some fields of its input follow FlashProve's format, namely the two readings of the public files, a test on a first hash block, and the proof format.
+> The Lean code has three layers, listed here from the bottom up:
+- What is hashed ([§4.1](#sec-compiler-hash)). The compiled verifier queries separate oracles, one for each purpose. They are implemented by the single random oracle, with domain separation. Each oracle string is replaced by Merkle roots.
+- The BCS transformation for one IOP ([§4.2](#sec-compiler-step)). The verifier's challenges are computed from answers of a Fiat–Shamir oracle, and the positions that the IOP's verifier reads are opened against the roots.
+- The whole verifier and the argument system ([§4.3](#sec-compiler-tree)).
+> The outer compiler constructs the committer and the prover from the honest IOP provers in its input, whereas the inner compiler takes the committer and the prover as fields of its input. As a result, the protocol's structure ([§3](#sec-protocol)) and the compiler's input ([§4.3](#sec-compiler-tree)) have fields, such as honest provers, that are not used to construct the compiled system; see the remark in [§6.4](#sec-honest).
+> **The definitions of the compiler's verifier.** These definitions are written for any protocol of the library's type ([§3](#sec-protocol)).
+- `compiledVerifier` first performs a scope test on the public files. It then performs three steps that depend on FlashProve's files and proof format: one parses the proof and two read the public files. It calls `innerCompiledVerifier`.
+- `innerCompiledVerifier` runs the next three definitions.
+- `Arg.buildInstance` rejects if no instance can be built from the request.
+- `verifyDigestKey` checks that the commitment equals the hash function's value at the encoding of the key in the proof ([§4.3](#sec-compiler-tree)).
+- `verifyAtKeyRoot` builds the whole key from the proof and calls `verifyAtFullKey`.
+- `verifyAtFullKey` performs six checks: the number of the copy ([§6.4](#sec-honest)), two seeds, and the verifiers of the three IOPs (offline, link, online).
+- `verifyOneProtocol` is the verifier of one IOP. Each of the last three checks of `verifyAtFullKey` calls it. The definitions that it calls have their own cards below it in [§4.2](#sec-compiler-step).
+=== 4.1 What is hashed, and Merkle trees | sec-compiler-hash
+> This subsection shows how the compiled algorithms use the single hash function. None of its definitions mentions FlashProve. `HashLayout` is stated for any protocol of type `HolographicProtocol` ([§3](#sec-protocol)). `typedOracleFamily`, `Check` and `hashTreeNode` are stated for the batch protocol with a leaf body that `typedOracleCarrier` constructs from such a protocol. `OracleCoding` is stated for any family of oracles, and `Opening` for any alphabet.
+VerifiableInference.Compilation.HashLayout | definition
+Rom.OracleCoding | definition
+TypedOracleCompiler.Compile.Batch.typedOracleFamily | definition
+Compile.Opening | definition
+TypedOracleCompiler.Compile.Batch.Check | definition
+TypedOracleCompiler.Compile.Batch.hashTreeNode | definition
+=== 4.2 The BCS transformation: one IOP, verified with the hash function | sec-compiler-step
+> The BCS transformation makes one IOP non-interactive. Each of the prover's oracle strings is replaced by the root of a Merkle tree. Each challenge of the verifier is computed from an answer of a Fiat–Shamir oracle, queried on what was fixed before that challenge.
+> One definition is used for all three IOPs of the protocol ([§3](#sec-protocol)).
+TypedOracleCompiler.Compile.Batch.verifyOneProtocol | definition
+TypedOracleCompiler.Compile.Batch.recomputeChainOfProof | definition
+TypedOracleCompiler.Compile.Batch.proofHasStrictFormat | definition
+TypedOracleCompiler.Compile.Batch.checkPrunedOpenings | definition
+TypedOracleCompiler.Compile.Batch.forestsOf | definition
+TypedOracleCompiler.Compile.Batch.afterF | definition
+TypedOracleCompiler.Compile.Batch.OneProtocolProof | definition
+TypedOracleCompiler.Compile.Batch.recomputeChain | definition
+> `verifyOneProtocol` calls three definitions, each with a card above:
+- `recomputeChainOfProof`, which calls `recomputeChain` on the parts of the proof string;
+- `proofHasStrictFormat`, which checks the format;
+- `checkPrunedOpenings`, which checks the openings, performs the check in the tree over the batch, and evaluates the IOP verifier's own decision.
+> `checkPrunedOpenings` calls `forestsOf` and `afterF`, each with a card above. Thus, in the Lean code on this page, a challenge can be traced from what is hashed to its value, then to the positions that the IOP's verifier reads for it (`Q.loc.reads`, `Q.loc.extReads`), and into the IOP verifier's decision (`Q.loc.accept`, at the transcript constructed by `mkTr`). Of the definitions that these three, `forestsOf` and `afterF` call in turn, `recomputeChain` has a card above. The others (including `forestsB`, `forestExt`, `runForests`, `reqPart`, `mkTr`, `effPlains`, `strictSB`, `strictExt`) have no card on this page. The Lean code of these eight is in [§9](#sec-defs).
+> **Merkle paths.** The Merkle path of each opening must have length equal to the depth of its tree. The joint verification reads only those digests in these paths that it needs: where two opened nodes are siblings, it reads the digest of neither. The other digests are not checked against anything. Neither `proofHasStrictFormat` nor `checkPrunedOpenings` rejects them, so a typed proof can be altered at these places and still be accepted. This is malleability of the proof string, not a gap in soundness: the bound of `sound` holds for arbitrary values of these entries (lean/GAPS.md, 14 and 66).
+> **The structure used by `verifyOneProtocol`.** `verifyOneProtocol` is stated for a smaller structure, which `typedOracleCarrier` constructs from a protocol of type `HolographicProtocol`. It keeps the protocol's shapes and types, but not its index or its provers. That structure has no card on this page either.
+=== 4.3 The verifier, and the compiled argument system | sec-compiler-tree
+> `compile` takes one record, `Compilable`. Its main fields are the public side (the protocol, its hash layout, two readings of the public files, and the model), the honest provers with their settings, and the format in which a proof is written.
+> It returns an argument system. The verifier of that system depends only on the public side and on the parser of the proof format.
+VerifiableInference.Compilation.compile | definition
+VerifiableInference.Compilation.compiledVerifier | definition
+> The next cards show what `compiledVerifier` runs after its scope test and its three steps, down to the verifier's own checks.
+VerifiableInference.OnPublicFiles.innerCompiledVerifier | definition
+Rom.schemeOverOneHashFunction | definition
+VerifiableInference.OnPublicFiles.InnerCompilerInput | definition
+ZKCP.Arg.buildInstance | definition
+ZKCP.verifyDigestKey | definition
+TypedOracleCompiler.Compile.Batch.Cms.verifyAtKeyRoot | definition
+TypedOracleCompiler.Compile.Batch.Cms.verifyAtFullKey | definition
+TypedOracleCompiler.Compile.Batch.Cms.outOfDomainSeedIs | definition
+TypedOracleCompiler.Compile.Batch.Cms.verifyOfflineProof | definition
+TypedOracleCompiler.Compile.Batch.Cms.verifyLinkProof | definition
+TypedOracleCompiler.Compile.Batch.Cms.verifyOnlineProof | definition
+! fold How an input becomes an argument system
+> The definitions in this folded section have at most a few lines each. They pass arguments from `innerCompiledVerifier` to `Arg.buildInstance`, `verifyDigestKey` and `verifyAtKeyRoot`. `schemeOverOneHashFunction` (above) does more: it implements the separate oracles of `verifyAtKeyRoot` by the single hash function ([§4.1](#sec-compiler-hash)). `ArgumentSystem.ofArgument` presents the result as an argument system.
+VerifiableInference.OnPublicFiles.innerSystem | definition
+VerifiableInference.Rec.tokenArgumentSystem | definition
+VerifiableInference.ArgumentSystem.ofArgument | definition
+VerifiableInference.Rec.tokenScheme | definition
+VerifiableInference.Rec.digestKeyScheme | definition
+ZKCP.Arg.digestKey | definition
+ZKCP.Arg.coinsFirst | definition
+VerifiableInference.OnPublicFiles.schemeOverTypedOracles | definition
+! fold-end
+! fold The record Compilable and its parts
+VerifiableInference.Compilation.Compilable | definition
+VerifiableInference.Compilation.PublicSide | definition
+VerifiableInference.Compilation.HashLayoutWithProverFields | definition
+VerifiableInference.Compilation.CompilerWiring | definition
+VerifiableInference.Compilation.ProofFormat | definition
+! fold-end
+! fold The expansion of compile
+VerifiableInference.Compilation.systemOf | definition
+VerifiableInference.Compilation.CompiledSide | definition
+! fold-end
+> The honest committer stores the weights as an encoded table, the first table, and answers requests from further encodings of it, called copies. Each copy has a link proof, which is meant to show that the copy decodes to the same index as the first table. The number of copies is a setting in `honestProversAndSettings`, which produces one copy (`furtherCopies` = 0).
+> The committer encodes the index as the first table, hashes that table into a Merkle tree, computes its out-of-domain sample and adds the offline proof. Each copy gets a link proof. The commitment has 256 bits. It is the hash function's answer on one bit string, the encoding of the key. The field `keyCode` of the hash layout computes this string from the key (the first table's Merkle root and its out-of-domain sample) and a part of what is read from the public files. The compiler does not fix which part. For FlashProve it is the digest of the files; this was found by reading the Lean code and is not stated by any theorem (lean/GAPS.md, 5).
+> The verifier takes the first table's root and out-of-domain sample from the proof, computes the same bit string, and compares the hash function's answer on it with the commitment.
+> It then recomputes the out-of-domain seeds of the first table and of the copy that the proof uses, and runs the compiled verifiers of the three IOPs: offline on the first table's root, link on both roots, and online on the copy's root and the request. Finally, it applies a test supplied by the hash layout (`num`) to the number that the proof gives for that copy and to the parts of the online proof that are sent in the clear. The compiler assumes nothing about this test.
+> Some rounds require proof of work. The prover must find a nonce for which the round's Fiat–Shamir answer passes a test on some of its bits, and the verifier rejects otherwise. In FlashProve's IOPs these bits are further bits of the round's challenge, and the IOP's verifier rejects unless all of them are 0 ([Appendix A](#sec-app-protocol), [The terms of this appendix](#sec-app-protocol), proof-of-work bits). The search for a nonce is called proof-of-work grinding; each failed attempt costs one hash query.
+=== 4.4 FlashProve | sec-final
+> This section applies the compiler to one input, `flashProveAtFiles`, and states what is required of the result. `compile (flashProve setup)` is the compiled argument system: a committer, a prover and a verifier that query a random oracle. The six theorems ([Final statements](#sec-top)) are about `compile` at this input only.
+> `finalSoundnessError q` = 16 (q + 1 + 2^23) / 2^128 + (q + 2^23 + 3)^2 / 2^256. Here q counts the hash queries of the committer and the prover together, honest or adversarial (in `sound`, adversarial). `finalBindingError` is defined below, among the values substituted for the parameters. `finalCompletenessError` is 2^-40.
+VerifiableInference.Compilation.flashProveAtFiles | definition
+VerifiableInference.Compilation.FilesTaken | definition
+VerifiableInference.Compilation.FilesInUse | definition
+VerifiableInference.Compilation.finalZeroKnowledgeError | definition
+VerifiableInference.Compilation.filesInUse_stored | proved
+! fold The same verifier, defined from the public side only
+> The verifier of `compile` at `flashProveAtFiles` is `finalVerifier`, for arbitrary honest provers and settings (theorem `compile_flashProve_verify`).
+VerifiableInference.Compilation.finalVerifier | definition
+VerifiableInference.Compilation.compile_flashProve_verify | proved
+! fold-end
+! fold The values substituted for the parameters
+VerifiableInference.Compilation.finalCompletenessError | definition
+VerifiableInference.Compilation.finalSoundnessError | definition
+VerifiableInference.Compilation.finalBindingError | definition
+VerifiableInference.Compilation.honestQueryBudget | definition
+VerifiableInference.Compilation.finalVerifierQueries | definition
+VerifiableInference.Compilation.finalReplyCount | definition
+VerifiableInference.Compilation.HonestProversAndSettingsAtFiles | definition
+VerifierAndGoals.errorFactorPerQuery | definition
+VerifierAndGoals.verifierQueryAllowance | definition
+VerifierAndGoals.soundnessErrorInQueries | definition
+VerifierAndGoals.bindingErrorInQueries | definition
+VerifierAndGoals.levelError | definition
+! fold-end
+> **The numbers.**
+! table numbers
+> Numerically, the soundness error is about 2^-100 at 2^23 hash queries, and about q / 2^124 above that (2^-60 at q = 2^64). The fixed term 2^-101 comes from the constant 2^23 in the formula, which accounts for the verifier's own hash queries. It is part of the bound as stated, and `sound` is proved without any hypothesis on these queries. None of these figures is a security level.
+== 5. The explicit hash function | sec-hash
+> In the theorems on soundness, binding, completeness and zero knowledge, the hash function is sampled uniformly at random, so these are statements in the random oracle model. `compile` does not take the hash function as a parameter. A program uses one concrete hash function instead. `leanVerifier` uses `blake2bHash`, a function from bit strings to 256 bits built from BLAKE2b ([Appendix B](#sec-app-hash)), in place of the random oracle.
++ The verifier instantiated with BLAKE2b
+- `leanVerifier` is the verifier of [§4.3](#sec-compiler-tree) with each of its queries answered by `blake2bHash`. `finalVerifierProgram` is defined for arbitrary public files, using only the public part of the compiler's input. At the files of a public setup it equals `leanVerifier` (`leanVerifier_eq`, below).
+- The argument `form` of `leanVerifier` is what this page calls the proof as submitted: a list of tokens and five byte strings. It is not the file that the prover writes. A program outside Lean splits the prover's files into the five byte strings. The tokens are the tokens of the request that follow the checked positions; they are read from the request file (`formOf`, Johnson/PVR/Program.lean:113).
+- `verdictOf` (card below) reads eleven files: the three public files; the user's three files, from which the commitment, the prompt and the output are parsed; and five parsed files, which are the five byte strings of `form`.
+- `verdictOf` uses its own definitions of several objects. This page names three of them:
+-- the order of the steps (fastSteps, Johnson/Top/Fire/Code/VerifyVFastStepsD.lean:103);
+-- the verifier of one file (verifyWholeX, OnBytes/Maker/LessWhole.lean:158; for the link, stagesWL, Johnson/RunOne/StrictLinkWL.lean:68);
+-- how a typed query is answered from the hash function on bytes (famFQ, Johnson/PV/MFullQ.lean:55).
++ The Fiat–Shamir heuristic
+> The heuristic is the assumption that, in the theorems on soundness, binding, completeness and zero knowledge, `blake2bHash` may be treated as a function sampled uniformly at random (the random oracle model). For zero knowledge, the simulator also answers the hash queries in place of this function ([§8](#sec-hashes)). The heuristic is not a theorem and is not stated in Lean. It is an assumption about the hash function and this argument system together. It also carries one assumption about the second hash function: that `blake2bHash` behaves like a random function that is independent of it ([below](#sec-further)).
+VerifiableInference.executableVerifier | definition
+VerifiableInference.verdictOf_eq_executableVerifier | proved
+VerifiableInference.verdictOf_eq_leanVerifier | proved
+VerifiableInference.Compilation.verdictOf_eq_finalVerifierProgram | proved
+! fold The same verifier instantiated with BLAKE2b, defined from the public side only
+VerifiableInference.Compilation.finalVerifierProgram | definition
+VerifiableInference.leanVerifier_eq | proved
+! fold-end
+PV.Program.verdictOf | definition
+VerifiableInference.ArgumentSystem.accepts | definition
+VerifiableInference.ArgumentSystem.run_verify | proved
+=== The second hash function | sec-further
+> The IOP being compiled itself uses a second hash function, `secondHashFunction`. It is a fixed function, built from BLAKE2b's compression function with a number written into the block counter. It is part of FlashProve's description ([Appendix A](#sec-app-protocol)); the six theorems do not take it as a parameter. It is therefore part of the compiled verifier, and hence of `leanVerifier`.
+- Where it is used. According to the comments in the Lean code, it is applied, among other places, to the public files when the protocol's public part is computed, and to the request in the verifier's tests on the instance. It has other uses, not all of which are listed on this page. For example, the test `protocolDataWellFormed`, the extractor and the honest online prover are defined using it. Through `protocolDataWellFormed` it also appears in the hypothesis of the six theorems.
+- How the theorems treat it. It is not modelled as a random oracle: the theorems on soundness, binding, completeness and zero knowledge sample one hash function and keep this one fixed. They assume no property of it, not even collision resistance. They are proved for this one function. A soundness statement for an arbitrary function in its place (`G7'`, Ladder.lean) is stated in the library but not proved. Each theorem holds for every request in its scope, and hence also for a request in that scope that an adversary chooses knowing this function.
+- What the heuristic assumes about it. In the theorems, queries to this function are not queries to the sampled function, and the sampled function is independent of it. The heuristic replaces the sampled function by `blake2bHash`, which is built from the same compression function. It therefore also assumes that `blake2bHash` behaves like a random function that is independent of the second hash function. This assumption is made outside Lean and is not a hypothesis of any theorem (lean/LIMITS.md, Assumption 2, second half).
+=== Running the verifier | sec-running
+> The command lean-verify evaluates the Lean function `run`, an IO wrapper that calls the three parts of `verdictOf` in turn (`claimOf`, `stepsOf`, `verdictAt`), with BLAKE2b as the hash function. The theorem `verdictOf_at` shows that these three parts compose to `verdictOf`. `verdictOf` parses the claim from the user's files and applies `executableVerifier` to it (`verdictOf_eq_executableVerifier`). The function `verdictOf` is a second implementation of the verifier in Lean. It uses the same definitions of the protocol's data and decisions, and has steps of its own ([§5](#sec-hash)).
++ What is proved
+> The eight theorems of this list (`executableVerifier_eq_leanVerifier`, `executableVerifier_eq_leanVerifier_stored`, `verdictOf_eq_executableVerifier`, `verdictOf_eq_leanVerifier`, `verdictOf_eq_finalVerifierProgram`, `leanVerifier_eq`, `verdictOf_map`, `verdictOf_none`) are equations between values of deterministic Lean functions. None of them involves a random oracle or makes a security claim.
+- `executableVerifier_eq_leanVerifier` ([Final statements](#sec-top)): for every public setup, `executableVerifier` applied to the setup's public files returns the verdict of `leanVerifier`. `executableVerifier_eq_leanVerifier_stored` (no card on this page) is its instance at the stored public files.
+- `verdictOf_eq_executableVerifier` (card above): `verdictOf` parses the claim from the user's files and applies `executableVerifier` to the public files, the claim and the parsed proof. It is proved by unfolding definitions.
+- `verdictOf_eq_leanVerifier` (card above): the same fact as the first, stated for `verdictOf`. It therefore has two further hypotheses: the claim can be parsed, and the public files are those of the setup.
+- `verdictOf_eq_finalVerifierProgram` and `leanVerifier_eq` (cards above) relate `verdictOf` and `leanVerifier` to a common term, `finalVerifierProgram` (the compiled verifier evaluated with `blake2bHash` on given public files).
+- The theorem `verdictOf_map` (Johnson/PVR/ProgramTotal.lean; no card on this page). For arbitrary public files, whenever the commitment, the prompt and the output can be parsed from the user's files, `verdictOf` returns the verdict of `VerifierAndGoals.verify` (Ladder.lean; no card on this page) for FlashProve's description (`flashProveDescription`), which includes the second hash function, evaluated with BLAKE2b. `VerifierAndGoals.verify` is the verifier in the soundness theorem `sound_of_verify_at`, whose hypotheses are that the public files are in scope, parse, and specify exact match. It equals the compiled system's `verify` by `compile_flashProve_verify_eq` and `theDescription_eq`.
+- If the commitment, the prompt or the output cannot be parsed, `verdictOf` returns no verdict (`verdictOf_none`).
+> The agreement is not special to BLAKE2b: for every function O from byte strings to 32-byte strings, the executable form run with O returns the verdict of `VerifierAndGoals.verify` evaluated with `hashOf O` (PV.Ride.verdictThe_eq, Johnson/PVR/RideEveryHash.lean:116). Hence its decision satisfies `SoundOfDecision`, a restatement of `Sound`, with a sampled hash function, under the hypotheses and the bound of `sound_of_verify_at` (PV.Ride.sound_of_the_form_events_oOf, Johnson/PVR/SoundOfTheFormEvents.lean:264). Neither theorem has a card on this page, and neither gives soundness at the concrete hash function.
+> The security statements for the compiled system are stated with the hash function sampled at random. Soundness at BLAKE2b is therefore not a theorem (see the card `executableVerifier_eq_leanVerifier`, [Final statements](#sec-top)).
++ What is not proved
+- These theorems concern the Lean functions `verdictOf`, `executableVerifier`, `finalVerifierProgram` and `leanVerifier`, not the run of the command lean-verify. No theorem is about the command itself, which consists of a script, an IO wrapper in Lean (`run`), natively compiled helper code, and Lean's compiler, interpreter and runtime.
+- `executableVerifier`, and hence `verdictOf`, does not check every condition of a public setup. It tests that the public files are in the verifier's scope, can be read and are well formed; it does not check that they specify the exact-match policy. If the public files pass the scope test (`InScope`) but specify another policy, the verifier may accept, and `sound` does not apply. The serving scripts use such a policy, the tolerant policy.
+- The theorems on soundness, binding, completeness and zero knowledge are stated for a hash function sampled uniformly at random, whereas `leanVerifier` fixes it to `blake2bHash`. Hence no theorem bounds the probability that `leanVerifier` accepts a false claim, and no theorem shows that it accepts even one honest proof.
++ What is trusted, and where files are parsed
+- The script lean_verify.sh, the IO wrapper `run`, the natively compiled helper code, and Lean's compiler, interpreter and runtime are trusted.
+- A parser outside Lean, which is not verified, splits the prover's files into the five byte strings of the proof as submitted. For soundness, its output is treated as chosen by the prover: a wrongly parsed file can cause an honest proof to be rejected, but it gives a prover no additional power. Hence soundness does not depend on the parser; only the acceptance of honest proofs does.
+- The Lean function `claimOf`, with the functions that it calls, parses the user's three files into the commitment, the prompt, the output and the remaining tokens of the request. The first three form the claim, and the last is passed to the verifier as part of the proof. No theorem shows that `claimOf` implements the file format (lean/GAPS.md, 37).
+- The verifier's own parser, the field `parse` of the proof format ([§4.3](#sec-compiler-tree)), is defined in Lean and maps the prompt, the output and the proof as submitted to a typed proof. The verifier calls it, so it is covered by `sound`.
++ What was run
+> These are tests, not theorems. All used synthetic weights. One Lean file, with one definition and four theorems, which nothing else imports, was added after the runs reported here and checked on its own (lean/CHECK-RESULTS.md). The runs executed the parts of `verdictOf`, not `executableVerifier` under that name.
+- With this repository's Lean files, the command accepted all 88 honest proofs. Of these, 86 used the exact-match policy and the stored setup's three public files, which were identified by checksums compared outside Lean; 2 used the tolerant policy. All 88 had been run before. None of them is known to have been generated by this repository's prover, and 3 were generated by test programs.
+- With this repository's Lean files, none of 71 invalid inputs (57 false proofs, 5 honest proofs paired with a false claim, 9 altered parameter files) was accepted: the Lean part of the command rejected 59, and the parser stopped 12 before they reached it.
+- One newly generated proof, which according to its builders was produced by this repository's prover, was also accepted, with the exact-match policy. It ran in a directory whose compiled files matched this repository's build before and after an earlier run; they were not checksummed after this run.
+- In a separate run, with Lean files that differ from this repository's and with the parsed files passed directly to the executable form, 17 proof files were altered without changing a true claim. Of these, 9 were accepted; for 2 of these 9 a rejection had been expected (lean/THEOREM.md, "Altered proof files that leave the claim untouched were accepted"; [§11](#sec-limits)).
+- In none of these runs was a claim accepted that was false under the policy of its own public files.
+== 6. The provider's side | sec-provider
+> **For a provider who cares that the weights stay hidden.** Three things to read:
+- the statement: `ZeroKnowledgeOn` ([§6.3](#sec-zk)), with its two experiments ([§6.2](#sec-zk-exp))
+- what is not hidden: one bit for each request (`requestOutcome`: served or refused, [§6.1](#sec-completeness)), and what the three public files reveal about the weights, which none of the six theorems covers, nor `zeroKnowledgeAtEveryRequest` ([§6.3](#sec-zk))
+- the two theorems `zeroKnowledgeOnCanServe` and `refusedHandsOutNoProof`, and what follows from them for every request ([§6.3](#sec-zk)). They concern the honest committer and prover as Lean definitions, which `compile` constructs from `honestProversAndSettings` (a black box on this page). Nothing is proved about the programs.
+> Completeness and zero knowledge are statements about the honest committer and the honest prover. A reader who relies on proofs does not need them; the provider does.
+> Completeness and zero knowledge are stated for one commitment by the honest committer and one request per proof, with the prover's own coins fresh and uniform for each reply. In the completeness theorem the weights and the request are fixed before the hash function is sampled; a request chosen after seeing the commitment or the hash function is not covered. With `honestProversAndSettings` the committer makes one copy of the committed table (on copies, see [§6.4](#sec-honest)). The theorems of this section say nothing about an honest committer that makes more copies.
+=== 6.1 Completeness | sec-completeness
+> A request can be served (`CanServe`) if its tokens are in the vocabulary, its output is not empty, and the model has a value on the whole window of 1,024 tokens. The completeness theorem says nothing about a request that cannot be served or whose output is not the model's. No theorem states that a request is served at a real model's weights (see the folded section below that begins [Notes: two definitions](#sec-completeness)).
+!- For one commitment and one request that can be served and whose output tokens are the model's, the honest proof is accepted, except with probability at most 2^-40.
+VerifiableInference.CompleteOn | target
+VerifiableInference.CanServe | definition
+VerifiableInference.canServe_nowhere_atHaltingWeights | proved
+> **The theorem `completeOnCanServe`, in full.** For every public setup, `compile (flashProve setup)` satisfies `CompleteOn` (above) with `CanServe` and `finalCompletenessError`. That is:
+- for all weights and every request that can be served and whose output tokens are the model's,
+- when the honest committer commits and the honest prover proves,
+- the verifier rejects with probability at most 2^-40, over the random oracle and the coins of the honest committer and prover.
+> **Remark.** The library proves it equivalent to a second form, stated for well-formed requests whose result is the claimed output (finalComplete_iff_completeOn, Johnson/Face/Checks.lean:57); both terms are defined below.
+> **Where the theorem says nothing.** The theorem `completeOnCanServe` says nothing about a request whose result is `none` or tokens other than the claimed ones. For such a request `requestOutcome` is `refused`, and `refusedHandsOutNoProof` states that the prover's reply is the empty proof (`noProofForm`: a form all of whose parts are empty). None of the six theorems states that a refusal can be checked.
+> **A well-formed request.** A request (a prompt with a claimed output) is well formed (`RequestForm`) if every token is in the vocabulary, neither list is empty, and the two together have at most 1,025 tokens.
+> **The model's result** (`requestResult`, [Appendix C](#sec-app-model)) is obtained from one run of the model on a window of exactly 1,024 tokens: the prompt, the claimed output, then token 0 as often as needed, all truncated to 1,024 tokens (`IntegerModel.zeroFilledWindow`). If the request has 1,025 tokens, the last output token is outside the window: the run does not read it, and it is only compared with the run's choice at the window's last position.
+- The result is `none` if the model has no value on that window, including the padded positions.
+- Otherwise it is `some` of the tokens that the run chooses at the positions just before the output tokens.
+> **The bit.** `requestOutcome` assigns each request one of two values, served or refused. A request is refused if it is ill-formed, if the model has no result on it, or if the result differs from the claimed output. The bit depends on the weights and is not hidden: `zeroKnowledgeAtEveryRequest` gives it to the simulator. In that statement each reply shows the verifier nothing in addition to a proof.
+> At valid settings, a request is served if and only if it can be served and its output tokens are the model's (served_iff_canServe, VerifiableInference/AtEveryRequestGuards.lean:127).
+VerifiableInference.AtEveryRequest.Request | definition
+VerifiableInference.AtEveryRequest.Outcome | definition
+VerifiableInference.AtEveryRequest.requestOutcome | definition
+VerifiableInference.AtEveryRequest.HandsOutNoProof | definition
+> **The theorem `refusedHandsOutNoProof`, in full.** The theorem concerns the output of the compiled prover. For every public setup,
+- for all weights, all commitment randomness, every request whose `requestOutcome` is `refused`, well-formed or not, and every hash function,
+- each reply that the prover returns with non-zero probability is the empty proof (`noProofForm`: a form all of whose parts are empty).
+> **Not covered.** A refusal is not checked: an empty proof proves nothing, and a prover can return it for a request that it could serve.
+> **Remarks.**
+- The condition is on every possible reply, so it has no error term.
+- The compiled verifier rejects the empty proof for every hash function and every public setup (`rejectsEmptyProof`).
+- The converse is not claimed: the reply to a served request can also be the empty proof. Among other cases, this happens when a search for a proof-of-work nonce ([§4.3](#sec-compiler-tree)) fails, and when the compiled prover withholds a proof string because the run's verifier messages are in one of the honest provers' abort sets ([Appendix A](#sec-app-protocol)); one part of the online prover's abort set depends on its private input. The reply is empty if any of the three proof strings (offline, link, online) is missing. The simulator of `zeroKnowledgeAtEveryRequest` simulates a failed nonce search. It does not simulate the aborts that depend on the online prover's private input; their probability, at most 2^-174 for each reply, is counted in the bound 2^-154 ([§4.4](#sec-final)). In each of these cases the reply looks like the reply to a refused request.
+- `refusedHandsOutNoProof` is proved more generally, for public files that meet `FilesTaken`: finalRefusedHandsOutNoProof_value (AtFullSide/Face/TheFinalStatementOneBitHolds.lean:60).
+VerifiableInference.Compilation.noProofForm | definition
+VerifiableInference.Compilation.isNoProof | definition
+VerifiableInference.rejectsEmptyProof | proved
+VerifiableInference.AtEveryRequest.WithinBudget | definition
+! fold Notes: two definitions of "the model's output" · that the statement is not vacuous
+> **Two definitions of "the model's output".**
+- Soundness, `CompleteOn` and `ZeroKnowledgeOn` use `IsModelOutput` ([§1](#sec-soundness)), which runs the model on the prompt followed by each proper prefix of the output, without padding.
+- `requestOutcome` uses the model's result, computed by one run on the padded window; `CanServe` requires that this run has a value.
+> **One direction is proved.** At the settings given by public files (these settings pass `settingsAreValid`, the library's test on sizes and quantization ranges), if a request is well formed and its result is the claimed output, then each output token is the model's next token in the sense of [§1](#sec-soundness) (from `wellFormed_and_result_iff`, VerifiableInference/WellFormedRequests.lean:48).
+> **The other direction** fails for the empty output, which is the model's in the sense of [§1](#sec-soundness), while a request with empty output is not well formed. It may also fail for a well-formed request if the model has no value at the last output token's position or at a padded position: such a request would be refused although its output is the model's in the sense of [§1](#sec-soundness). No theorem rules this out, except for weights that meet a condition stated in the library but not on this page. No example of this is proved.
+> **Not vacuous.** For every set of public files that meets `FilesInUse` (one exists: `filesInUse_stored`), some request is served at some weights (`someRequestIsServedInUse`, below). Those weights are artificial: all their layers are zero. No theorem states that a request is served at a real model's weights, and at the settings that the stored public files give there are weights at which no request can be served (`canServe_nowhere_atHaltingWeights`, above).
+VerifiableInference.Compilation.SomeRequestIsServedInUse | target
+VerifiableInference.Compilation.someRequestIsServedInUse | proved
+! fold-end
+=== 6.2 The two experiments of zero knowledge | sec-zk-exp
+> A malicious verifier is given the commitment and then proofs. The request for each proof is picked by a chooser: a function that maps the verifier's view so far to a request, or to nothing, in which case the experiment ends. In the real experiment, the hash function is sampled uniformly at random, and the honest committer and the honest prover run. In the simulated experiment, the simulator replaces all three; it is given each request and the information about the weights that the statement specifies.
+> This page has two definitions of a simulator, each with its own simulated experiment; the real experiment is the same for both.
+- `Simulator` is the general one: for each request it is given only the request. `ZeroKnowledgeOn` is stated with it.
+- `AtEveryRequest.Simulator` takes one more argument: the information it is given about each request. `ZeroKnowledgeWhere`, and hence the theorem `zeroKnowledgeAtEveryRequest`, is stated in terms of it. Its card is in a folded section in [§6.3](#sec-zk).
+VerifiableInference.View | definition
+VerifiableInference.MaliciousVerifier | definition
+VerifiableInference.MaliciousVerifier.QueryBound | definition
+VerifiableInference.realSteps | definition
+VerifiableInference.realExperiment | definition
+VerifiableInference.Simulator | definition
+VerifiableInference.simulatedSteps | definition
+VerifiableInference.simulatedExperiment | definition
+VerifiableInference.statisticalDistance | definition
+VerifiableInference.QueryLog.Consistent | definition
+=== 6.3 Zero knowledge | sec-zk
+> The theorem `zeroKnowledgeOnCanServe` is stated in terms of `ZeroKnowledgeOn`, for the requests that can be served and whose output tokens are the model's. The compiled system has no public parameters (`PublicParameters := Unit`, [§4.3](#sec-compiler-tree)), so the simulator is initially given nothing about the weights. It may depend on the three public files, and a fitted model's scale file is derived from its weights; what these files reveal about the weights is not covered. Whether a request can be served depends on the weights, and this is not hidden: the chooser of requests may know the weights and is the same in both experiments.
+> In the theorem `zeroKnowledgeOnCanServe`, 2^64 bounds the verifier's hash queries and 688,127 bounds the replies under one commitment. Within these limits the error is at most 2^-154 (`finalZeroKnowledgeError`).
+!- One simulator, fixed before the weights, produces the commitment, the replies and the hash answers. It may depend on the public files; it gets each request and the largest number of replies, and nothing about the weights.
+!- At requests that can be served and whose output tokens are the model's, for one commitment, up to 688,127 replies and 2^64 hash queries, against any verifier, the view is within statistical distance 2^-154 of the real one.
+!- At a refused request the reply is the empty proof. With that, the same holds at every request, with one bit revealed for each: served or refused.
+VerifiableInference.ZeroKnowledgeOn | target
+> **At every request.** On its own, the theorem `zeroKnowledgeOnCanServe` says nothing about a refused request. Together with `refusedHandsOutNoProof`, it implies `zeroKnowledgeAtEveryRequest` within the same bound, where the simulator is given one bit per request: served or refused. This bit depends on the weights and is not hidden.
+VerifiableInference.zeroKnowledgeAtEveryRequest | proved
+> The simulator is given the bit of every request: up to 688,127 bits, at requests that the verifier picks. Over many requests the bits reveal what the model outputs, and the statement does not bound what they jointly reveal about the weights. In this theorem, 688,127 bounds the number of replies under one commitment; a reply to a refused request, which is the empty proof, also counts.
+> **The theorem `zeroKnowledgeAtEveryRequest`, in full.** For each public setup there is one simulator, fixed before the weights, such that for
+- all weights,
+- every chooser of requests, well-formed or not, whatever the model's result on them, and
+- every verifier with at most 2^64 hash queries and at most 688,127 replies under one commitment:
+> (1) the statistical distance between the verifier's view with the honest committer and prover and the simulator's output is at most `finalZeroKnowledgeError`, 2^-154;
+> (2) the simulator never answers one hash query in two ways.
+> **Remark.** The theorem is stated as `ZeroKnowledgeBelowWhere` (in the folded section below) for `compile (flashProve setup)` itself: at each request, the verifier is given the request and the compiled prover's reply (a proof or the empty proof), and nothing else.
+> **What the simulator is told.** The simulator is given the maximum number of replies, each request and, of the weights, only one bit for each request: served or refused (`requestOutcome`, [§6.1](#sec-completeness)). A reply is what the compiled prover returns: a proof or the empty proof (`noProofForm`). The strength of the statement depends only on this function (`requestOutcome`): its value is the only function of the weights that the simulator is handed with a request.
+> **What the bit reveals.** The bit depends on the weights, and it is not hidden (the statement gives it to the simulator):
+- For every well-formed request of its choice, a verifier learns whether the claimed output is the model's result. It infers the bit from the reply: a refused request gets an empty proof, and so, with small probability, does a served one (see [§6.1](#sec-completeness) for the cases).
+- Hence, over many adaptively chosen requests, it learns the model's outputs on inputs of its choice: trying each candidate token for a prompt reveals the model's next token from this bit alone, unless all are refused.
+- An output that is the model's in the sense of [§1](#sec-soundness) is refused if the model has no value at a later position in the window.
+- No statement bounds what many bits reveal together.
+> **Public parameters.** The type of public parameters of `compile (flashProve setup)` is `Unit`, so this system has none. Hence, in the experiment, the simulator of `zeroKnowledgeAtEveryRequest` is given the bits and nothing else about the weights (it may depend on the public files).
+> **What a refusal does not reveal.** For a well-formed request, a refusal does not reveal whether the model has no result or a result other than the claimed output. This is hidden only from a verifier that makes few requests:
+- A request's window of 1,024 tokens can itself be sent as a prompt, with one more token as the claimed output, which the run does not read.
+- A verifier that tries every candidate for that token and is refused each time learns that the model has no result on that window, and one that is served once learns that it has one (argued from the definitions; no theorem states it).
+- Each such search uses up to 202,048 (the vocabulary size) of the 688,127 replies.
+> **Not covered by either theorem:**
+- more than 688,127 replies or 2^64 hash queries;
+- what many bits reveal together;
+- what the public files themselves reveal about the weights, what is published alongside the commitment, and timing;
+- coins that are not fresh and uniform, several requests in one proof, a second commitment, and public files whose policy is not exact match ([§4.4](#sec-final));
+- the simulator's running time;
+- a hash query before the commitment, and weights or public files chosen after the hash function is sampled;
+- whether the prover outputs any proof at all (that is the subject of `completeOnCanServe`; on its own, the property in each of these two theorems is satisfied by a prover that outputs nothing ([§11](#sec-limits))).
+! fold The definitions used in the theorem for every request, and its derivation from the two theorems
+VerifiableInference.zeroKnowledgeAtEveryRequest_of_lines | proved
+VerifiableInference.AtEveryRequest.ZeroKnowledgeBelowWhere | target
+VerifiableInference.AtEveryRequest.ZeroKnowledgeWhere | target
+VerifiableInference.AtEveryRequest.Simulator | definition
+VerifiableInference.AtEveryRequest.simulatedSteps | definition
+VerifiableInference.AtEveryRequest.simulatedExperiment | definition
+! fold-end
+=== 6.4 The honest committer and the honest prover of the compiled argument system | sec-honest
+> **The theorem `repliesFit`, in full.** For every public setup, three numerical conditions hold:
+- (1) `finalReplyCount` (688,127) is at most `onlineRunsPerCopy setup`, whose value is also the numeric literal 688,127; so (1) compares two literals, and (2) is what relates this number to a table;
+- (2) for each table, the number of columns counted for the proofs is at most the limit of 44,040,191 (`TableBudgetFits`: 62 + (`furtherCopies` + 1) · 62 on the first committed table, 62 + `onlineRunsPerCopy setup` · 64 on a copy);
+- (3) one run each of the honest sampler of commitment randomness, the honest committer and the honest prover together make at most 2^48 hash queries (`WithinBudget`, [§6.1](#sec-completeness)).
+> **A copy.** The committed table of weights is stored encoded, with random masks, and each proof opens some of its columns. Informally, one encoding supports only a limited number of openings before its masks are used up. A copy is a further encoding of the same table, with a link proof (`compile`, [§4.3](#sec-compiler-tree)): a proof of the link IOP, which is meant to show that the copy decodes to the same index as the first encoding.
+> Condition (1) requires that the number of replies be at most the number of runs that the honest settings assign to one copy, because the prover samples its copy at random and keeps no count; condition (2) states that this many runs fit in one copy.
+VerifiableInference.onlineRunsPerCopy | definition
+> `compile` ([§4.3](#sec-compiler-tree)) constructs the honest committer and the honest prover from the three honest IOP provers in its input's field `provers`; for FlashProve these are the provers of `honestProversAndSettings`.
+> **Remark.** The protocol's record has fields for honest provers (`honestOfflineProver`, `honestLinkProver`, `honestOnlineBatchProver`), and the public side's layout has fields for a committer, a prover and the model's next-token function (`commit`, `prove`, `nextToken`). The compiled system is not constructed from these fields (their contents are described at the beginning of [Appendix A](#sec-app-protocol)):
+- its honest committer and prover take their three IOP provers from `provers` (`honestSide`);
+- its model is the public side's own (`compile`);
+- its verifier reads none of these fields (theorem `innerCompiledVerifier_eq`, Johnson/Top/InnerCompiledVerifierSide.lean:79, which has no card on this page).
+! fold The compiled side and the scheme
+VerifiableInference.Compilation.compiledSide | definition
+VerifiableInference.Compilation.compiledScheme | definition
+! fold-end
+> **Not covered.** The prover does not enforce these numbers: `compile` does not read `onlineRunsPerCopy`, and the compiled prover is stateless, samples its copy at random and does not count replies.
+== 7. The roles | sec-roles
+> The table lists every party of the statements: its name, its Lean type, who chooses it, what it is given, what it returns, and what limits it. The model, the honest committer, the honest prover and the verifier are fields of the record `ArgumentSystem`; the hash function is sampled uniformly at random; the others are quantified in the statements.
+! table roles
+== 8. The model of hash functions | sec-hashes
+> The model has one hash function, sampled uniformly at random among all functions from bit strings to 256 bits (the random oracle model). Every algorithm of the statements has query access to it; the statements bound the number of queries and, in zero knowledge, of replies, and nothing else. In the simulated experiment of zero knowledge the simulator answers the hash queries in the hash function's place.
+> **Two types of algorithm, and where the hash function is sampled.** `RandomizedAlgorithm` and `DeterministicAlgorithm` are both types of oracle algorithm: an algorithm of either type may query the hash function and continue with the answer, but neither fixes nor samples it. "Randomized" refers to the algorithm's own coins: a `RandomizedAlgorithm` may also sample random numbers of its own, whereas a `DeterministicAlgorithm`, the type of `verify` and of `commit`, may not. `toRandomized` views a deterministic algorithm as a step of an experiment and adds no randomness. In the statements on this page the hash function is sampled in `Prob`: the probability is taken over `uniformHash`, the uniform distribution on hash functions, and over the experiment's own random choices. `evaluate` instantiates the hash function with a concrete one, as in `leanVerifier` ([§5](#sec-hash)).
+> **The second hash function.** FlashProve's second hash function is a different function: it is fixed, and it is part of the argument system. The model does not sample it. [§5](#sec-further) states what the theorems assume about it (nothing) and what the Fiat–Shamir heuristic assumes about it.
+VerifiableInference.Hash | definition
+VerifiableInference.uniformHash | definition
+VerifiableInference.RandomizedAlgorithm | definition
+VerifiableInference.RandomizedAlgorithm.bind | definition
+VerifiableInference/RandomOracleModel.lean:64 | definition
+VerifiableInference.RandomizedAlgorithm.QueryBound | definition
+VerifiableInference.RandomizedAlgorithm.withQueryLog | definition
+VerifiableInference.RandomizedAlgorithm.run | definition
+VerifiableInference.eventProbability | definition
+VerifiableInference.Prob | definition
+VerifiableInference.DeterministicAlgorithm | definition
+VerifiableInference.DeterministicAlgorithm.evaluate | definition
+VerifiableInference.DeterministicAlgorithm.toRandomized | definition
+== 9. Definitions used on the cards | sec-defs
+> This section lists the definitions that are named in a card's Lean code and have no card of their own, arranged by folder. Each row gives the declaration's keyword, its name, the first sentence of its comment in the Lean file (if it has one) and the line number. These comments were written for the library's authors, and Lean does not check them. Click a name to read its Lean code.
+! definitions
+== Short names in the Lean code | sec-names
+> The Lean code uses short names for some types, fields and variables, such as `I`, `lam`, `enc` and `Pub`. The folded section below lists some of them with their meanings.
+! fold The names, one by one
+- `Ans`: the out-of-domain answers.
+- `aT`: the offline IOP's round marking (which rounds a batch shares).
+- `Bd`: the type of a leaf's body (what the leaf contains in addition to its salt).
+- `Digest`: an output of the hash function (256 bits).
+- `early`: the early part `early x` of an instance `x`, which the first query of a Fiat–Shamir chain contains (`HolographicProtocol`, [§3](#sec-protocol)).
+- `enc`: several meanings, including the encoder in ConfigurationWithOutOfDomainSample (it maps a message and randomness to an encoding) and, as an argument of verifyDigestKey, Arg.digestKey and Rec.tokenArgumentSystem, the code of a key; the commitment is the hash function's answer at this code.
+- `Further`: the return type of the second public reading.
+- `honestOfflineProver, honestLinkProver, honestOnlineBatchProver`: [§6.4](#sec-honest).
+- `I`: the indices (for FlashProve, the committed data, derived from the weights).
+- `Inst`: either the namespace and folder of the integer model's definitions, or the instance (request file bytes, table key, reply file bytes).
+- `Isk`: the prover's key (the index and the tables of its stored copies); it does not contain the first table.
+- `lam`: the length in bits of a digest; 256 in the six theorems.
+- `late`: the number of the late round, if there is one; the query of that round contains the whole instance (`HolographicProtocol`, [§3](#sec-protocol)).
+- `lowKey`: the whole key's root and out-of-domain sample, for the compiled verifier.
+- `lowPrf`: the whole key and a proof, written as the compiled verifier's typed proof.
+- `n`: the encoding's length.
+- `N`: the batch size (the number of batch positions in one run of the online IOP).
+- `ofUpload`: a ZKCP oracle algorithm rewritten as a RandomizedAlgorithm.
+- `Pub`: either three public files as bytes (parameter, layout and scale files), or what the description takes from the three public files.
+- `Rec`: the out-of-domain sample (also a namespace: Rec.tokenArgumentSystem).
+- `Seed`: the out-of-domain seeds.
+- `Wn`: the witness type of the relations.
+- `X`: the instances (an instance is built from a request and further tokens).
+- `ZKCP.Arg` (ZKCP: zero-knowledge commit-and-prove): an argument consisting of three oracle algorithms: committer C, prover P, verifier V.
+! fold-end
+== 10. Sources | sec-closing
+! closing
+== 11. Limits | sec-limits
+- lean/LIMITS.md: all limits of the statements, numbered. A card gives only those most relevant to it.
+- lean/GAPS.md: the gaps between these statements and the programs.
+- lean/CHECK-RESULTS.md: the axioms that Lean lists for each theorem (at most the three standard axioms).
+- lean/CREDITS.md: whose work the Lean files follow.
+- docs/model.md: the symbols in the comments of the integer model ([Appendix C](#sec-app-model)).
+- **Counts of declarations.** The statement of the theorem `sound` depends on about 17,000 named declarations of this library. The general parts are small: `Sound` depends on 28, the model on about 160, `blake2bHash` on about 130, `compile` on about 720. Three declarations, whose dependencies overlap, account for nearly all the rest: FlashProve's description (`flashProveDescription`, about 12,000), the test on the public files (`protocolDataWellFormed`, about 9,100) and the honest provers and settings (`honestProversAndSettings`, about 16,000).
+- **What is counted.** Only names written in this library's source are counted: definitions, theorems and structures, with their fields and constructors, but not names that Lean generates or names from Mathlib. For a definition, the names used in its type and its value are counted; for a theorem, those used in its statement; and so on, transitively. The counts are computed by a program from the compiled library's record of the constants that each declaration uses, and are rounded to two digits. Of the about 17,000 names counted for the theorem `sound`, about 11,000 have their own declaration line, and about 9,100 of these are declared with `def`.
++ How to read the three kinds of statement together
+- Each statement on its own is satisfied by a useless argument system: soundness by a verifier that rejects everything (see the theorem card below), completeness by one that accepts everything, zero knowledge by a prover that outputs nothing.
+- The bounds are part of the statements. ε, α and ζ bound three different experiments and should not be compared with one another.
+- ε, α and ζ take values from 0 to ∞. A bound that is 1 or more makes its statement trivial.
+- A theorem about an argument system states each bound as an explicit function, except for zero knowledge: that theorem states that such a function exists and is at most 2^-154 for at most 2^64 hash queries and at most 688,127 replies. A single value of ε or ζ should be quoted together with the numbers of queries and of proofs at which it is evaluated.
+VerifiableInference.rejectAll_sound | proved
++ What the statements do not say
+- That a statement says what is meant. Lean checks that each theorem follows from the definitions that it names and, for each, the build reports no axiom beyond Lean's three standard ones; Lean does not check that these are the right definitions. That is read off the statements and the definitions under them. This page prints them for that, as far as it goes: three values are black boxes here (What this page does not show, below). The statements: `sound`, `soundAndBinding`, `completeOnCanServe`, `zeroKnowledgeOnCanServe`, `refusedHandsOutNoProof`, `repliesFit`, with the definition `leanVerifier`. These seven are this library's own wording of what is to be proved. So are the statements of soundness, completeness and zero knowledge as an IOP, which this page does not print (their files: lean/LIMITS.md, under "That a statement says what is meant").
+- That Lean's kernel, which checks the proofs, is free of bugs: it is trusted, not proved correct, as are the compilers, the operating system and the fetched packages. The pinned version of Lean, 4.29.1, predates the published fixes (from version 4.32.1 on) for soundness bugs in Lean's kernel and runtime and in the arbitrary-precision arithmetic library (GMP) that its Linux builds link against. No proof in this library is known to use such a bug; the proofs have not been searched for one, and the check script's word list and audit would not detect one. These pages do not report any check of the library with a later version of Lean. (lean/LIMITS.md, L45.) Lean's kernel has checked each of the six theorems with a larger thread stack than the default: the library that contains them is compiled with that setting, because with the default stack the kernel fails on some constants used by its theorems (lean/LIMITS.md, L69).
+- **Fiat–Shamir.** That a concrete hash function behaves as a uniformly random function ([§5](#sec-hash)).
+- **Second hash function.** Technically, the IOP itself uses a second, fixed hash function, built from BLAKE2b's compression function. By the rules of the file format (docs/format/FORMAT.md, R15.3) it is used to digest public data (the scale file, lines of the parameter file, and the model's lookup tables, which the parameter file names by these digests) and the request. The theorems assume no property of it. The Fiat–Shamir heuristic then also assumes that `blake2bHash` behaves like a random function that is independent of it ([The second hash function](#sec-further)). None of these uses is essential to the protocol: the digest of the request is redundant, and the digests of public data can be made with the main hash function. The second hash function will be removed in a future version.
+- **Exact match.** That the public files specify the exact-match policy (the field `exactMatch` of `FilesTaken`, [§4.4](#sec-final)): the verifier does not check this, and the theorem `sound` applies only to such files ([A public setup](#sec-setup)). The serving scripts use a different, tolerant policy, and the six theorems do not apply to it.
+- **Intended files.** That a commitment belongs to a single set of public files: no theorem ties a commitment to one set of public files or one policy. The user must therefore keep the intended public files together with the commitment.
+- **Scales.** That the model does anything at the settings that the public files specify: for some valid choices of the quantization scales, the outputs of the value and up projections are all zero, so no layer changes the residual stream (checked by hand, not proved; see the card `PublicSetup`). No theorem or test on this page determines which scale files have such scales.
+- **Files fixed first.** Anything about a provider that chooses its public files, or tries many, with access to the hash function: in the statements the files are fixed before the hash function is sampled. There is room to try many: the committer chooses the scale file, and five numbers of the parameter file are free, within what the parser of the files accepts ([Judging the assumptions on the public files and on hash values](#sec-judged)).
+- **Hash values treated alike.** That the protocol treats all values of the hash function alike. Consider a protocol whose verifier accepts every request whenever one particular answer of the hash function has one particular value. A function sampled at random gives that value with probability 2^-256, so the protocol can still satisfy the statements. The value can be chosen to be the one that the concrete hash function gives; the verifier then accepts every request when instantiated with the concrete hash function ([Judging the assumptions on the public files and on hash values](#sec-judged)).
+- Anything about running time. The bounds count queries to the hash function.
+- Anything about an adversary that queries the hash function in superposition: in the statements the committer, the prover and the malicious verifier query it classically, one bit string at a time (`RandomizedAlgorithm`, [§8](#sec-hashes); `MaliciousVerifier`, [§6.2](#sec-zk-exp)).
+- That a program that runs on a machine computes `ArgumentSystem.accepts`, or that a prover program computes `prove`. These are facts about programs. The honest prover in these statements is a definition, not a program.
+- How the integer model relates to a model in floating-point arithmetic.
+- That the empty output is rejected: it has no position to check, so it is the model's output in the sense of [§1](#sec-soundness) for every prompt and all weights, and when the extractor outputs weights, `Sound` does not count its acceptance as a failure.
+- A soundness bound for several proofs under one commitment: `Sound` concerns one proof. For N proofs submitted together, a union bound gives N times the error of one proof, evaluated at the number of hash queries of the whole list. For proofs checked one after another, no bound is stated.
+- Anything about several requests in one proof. The statement on zero knowledge concerns many replies under one commitment ([§6.3](#sec-zk)).
+- Anything about a party that learns the committer's randomness or the weights by means other than the replies.
+- A bound on what the bits of many requests together reveal about the weights ([§6.1](#sec-completeness), `requestOutcome`).
+- A security level: `finalSoundnessError q`, about q / 2^124 + 2^-101, is a bound on the soundness error, not a security level (see the card `sound`).
+- That the limit on the number of replies is respected: the prover does not count replies, so nothing in it enforces the number 688,127 in the theorems on zero knowledge ([§6.4](#sec-honest)).
+- What the three public files reveal about the weights: the scale file of a fitted model is computed from its weights, and the theorems on zero knowledge do not cover this ([§6.3](#sec-zk)).
+- That any public files other than one stored set form a public setup: the library proves this for one set (`filesInUse_stored`), whose scale file is that of an example with synthetic weights (according to the header of Ladder/Stored.lean, not a theorem).
+- That a proof cannot be altered: the joint verification reads only those digests in the Merkle paths that it needs, so a typed proof can be altered at the others and still be accepted; and it is not proved anywhere that an accepted proof string cannot be changed elsewhere into another accepted one. This is malleability of the proof string, not a gap in soundness ([§4.2](#sec-compiler-step)).
++ What this page does not show
+- **What this page contains.** Every statement, and every definition that the introduction asks a reader who checks only soundness to read. It does not show the definitions of three Lean terms, which it treats as black boxes: FlashProve's description, the test on the public files (`protocolDataWellFormed`) and the honest provers and settings (`honestProversAndSettings`). Their sizes are under “Counts of declarations” above.
+- The line `noncomputable section`. Many definitions on the cards are inside such a section, which no card shows, so a `def` on a card may be one that Lean does not compile. `leanVerifier`, `flashProve`, `compile`, `compiledVerifier` and `finalVerifierProgram` are inside one; `verdictOf`, whose three parts the command lean-verify evaluates, is not.
+- What the proof of `sound` depends on. Among other things, it uses theorems of coding theory from files that are adapted from others' work (lean/CREDITS.md). Nothing in these coding-theory files has a card here. The axioms that Lean lists for `sound` cover them, as they cover every file on which the proof depends.
+- Properties that the library states but does not prove for any object: `G3'pol`, `G7'`, `G7'bits` and the six `Package…` statements (Ladder.lean, Ladder/Bits.lean, Ladder/Package.lean). None of them is used in the statements of the six theorems or in the definitions under these. The plain properties `Complete` and `ZeroKnowledge` are discussed in [§6](#sec-provider): `ZeroKnowledge` is not proved for any system, and `Complete` is proved only for a verifier that accepts everything (`acceptAll_complete`).
+=== Judging the assumptions on the public files and on hash values | sec-judged
+> The assumptions **Files fixed first** and **Hash values treated alike** (above) can be judged only from the protocol's definitions. A reader can check the following.
+- **Files fixed first.** Is the digest of the public files, or their bytes, part of the query whose answer is the commitment and of every query from which the verifier samples a challenge (directly or through the instance)? Is any answer of the hash function compared with bytes of the public files?
+- **Hash values treated alike.** Do the definitions single out any value of the hash function, whether written out, referred to by name, or computed?
+> We have read FlashProve's own definitions with both questions in mind. The findings below come from reading the definitions, not from theorems.
+- **Files fixed first.** Their digest is the first input of every sequence of chained queries, and it is included in the encoding of the key, whose hash is the commitment. It is not part of the instance, which consists of the request only (a window of tokens, one further token and two positions; the online IOP adds the out-of-domain seed and answer of the copy, [§6.4](#sec-honest)). For comparisons, see the next item.
+- **Hash values treated alike.** By reading and by counting occurrences, we found no place where an answer of the sampled hash function is compared with a stored digest or with bytes of the public files (lean/GAPS.md, 51). The compiler's verifier does compare such answers with the commitment and with digests in the proof (for example `verifyDigestKey`). The definitions used by `verify` do contain one explicit answer of the concrete hash function, namely a digest of the stored public files; as far as we can tell from reading, it is not used anywhere.
+> No attack is known, and neither point is settled by a theorem (lean/GAPS.md, 5 and 51).
+== Appendix A. FlashProve's protocol | sec-app-protocol
+> This page prints 1,558 declarations. The statement of the theorem `sound` depends on about 17,000 named declarations of the library (counted as described in [§11](#sec-limits)); the page prints those nearest to it, and the protocol's three IOPs, the compiler, BLAKE2b and the integer model. The rest are in the files, most of them under Johnson/Desc/, OnBytes/Model/, OnBytes/Params/, OnBytes/Iop/ and Inst/Model/.
+> A protocol is a linkable holographic IOP, from which the verifier is built. It makes no queries to the random oracle. It has an encoder that encodes an index, here the weights, as an oracle string, with a decoder; an out-of-domain sample on each encoding; and three interactive oracle proofs: offline, link and online.
+> An IOP is defined for a batch of instances: one prover serves them together, and each instance has its own verifier.
+> This appendix gives the three IOPs from which `FlashProve.flashProveDescription` is assembled. The first folded sections contain the Lean definitions nearest to the six theorems: the verifier's side, the public files, the honest provers and settings. Next are the terms of this appendix, a count of sub-protocols by kind, and each IOP, sub-protocol by sub-protocol. The last folded sections contain the protocol itself: the format in which an IOP is written, how a written IOP is run, the public checks on it, the two decisions, the three IOPs chain by chain, the kinds of sub-protocol, and the assembly.
+> This appendix shows the verifier's side of the protocol and, in the folds named here, the honest provers. The honest provers and settings of the six theorems are on the card `honestProversAndSettings`, in [What the theorems refer to](#sec-beside).
+- Three folded sections, from [The honest provers and settings: one closed term](#sec-app-protocol) to [The three honest provers of the interactive protocol](#sec-app-protocol), expand it down to `honestProvers`.
+- Six later folds, from [The three provers](#sec-app-protocol) to [The components of a prover](#sec-app-protocol), expand the offline and the online prover down to one round's message, and the link's prover down to `linkSide`. The last of them contains the types of which these two provers are made, and can be read first.
+> The fixed-message provers, the constant committer and the constant prover in this appendix supply fields of the protocol's record, which the types need and which neither `compile` nor the verifier reads. Fixed-message provers are provers that send the same messages whatever the weights, and so show nothing of them; at public files in use (`FilesInUse`, [§4.4](#sec-final)) the protocol's honest provers are different provers: only where a function that makes them refuses do they fall back on these. The constant committer is a committer that returns one constant whatever the weights, and so commits to nothing; the committer of the six theorems is a different committer: the one that `compile` makes (Johnson/Face/Compiler.lean), which encodes the weights and hashes the key. The constant prover returns empty strings.
+! fold A helper: andThen
+VerifierAndGoals.andThen | definition
+! fold-end
+! fold The public side that the verifier reads
+VerifiableInference.Compilation.flashProvePublic | definition
+VerifiableInference.Compilation.ofDescription | definition
+VerifiableInference.Compilation.layoutOf | definition
+VerifiableInference.Compilation.TypedProof | definition
+VerifierAndGoals.PublicFiles | definition
+VerifierAndGoals.InScope | definition
+VerifierAndGoals.readConfig | definition
+VerifierAndGoals.configString | definition
+! fold-end
+! fold The protocol's description
+FlashProve.flashProveDescription | definition
+FlashProve.descriptionOfDataOnBytes | definition
+FlashProve.flashProveData | definition
+FlashProve.flashProveDataNoExtractor | definition
+VerifierAndGoals.asDescriptionFiles | definition
+FlashProve.FormBytes | definition
+! fold-end
+! fold The type of an interactive oracle protocol
+Iop.Round | definition
+Iop.Shape | definition
+Iop.RoundSplits | definition
+! fold-end
+! fold The test on the public files
+FlashProve.protocolDataWellFormed | definition
+! fold-end
+! fold The link IOP's one chain
+Desc.K15.linkProtocolChain | definition
+! fold-end
+! fold From the interactive protocol to hash queries
+VerifiableInference.OnPublicFiles.innerInputOfThreeProtocols | definition
+TypedOracleCompiler.Compile.Batch.Cms.KeyRoot | definition
+TypedOracleCompiler.Compile.Batch.Cms.OfflineLinkOnlineProof | definition
+! fold-end
+! fold The proof-of-work test on challenges
+VerifiableInference.Compilation.flashFirstBlockTest | definition
+! fold-end
+! fold The public files: three files, their parser, and the parameters read from them
+VerifierAndGoals.readFiles | definition
+Inst.Model.ScalesAndPolicy | definition
+Inst.Model.AcceptancePolicy | definition
+Inst.Model.AcceptancePolicy.exact | definition
+VerifierAndGoals.settingsOfRead | definition
+! fold-end
+! fold The public files that the verifier takes, and the stored full-size example
+VerifierAndGoals.FreeLines | definition
+VerifierAndGoals.freeLinesOf | definition
+VerifierAndGoals.policyFile | definition
+! fold-end
+! fold The three public files as bytes
+OnBytes.K.Pub | definition
+! fold-end
+! fold The honest provers and settings: one closed term
+VerifiableInference.Compilation.HonestProversAndSettings | definition
+VerifiableInference.Compilation.honestProversAndSettingsOf | definition
+VerifiableInference.Compilation.honestProversAndSettingsAtFiles | definition
+VerifiableInference.Compilation.neverBuiltRequest | definition
+! fold-end
+! fold The honest provers, which refuse a request that is not served
+VerifiableInference.Compilation.theProvers | definition
+VerifiableInference.Compilation.HonestProvers.refuseUnserved | definition
+VerifiableInference.Compilation.ServedAt | definition
+! fold-end
+! fold The three honest provers of the interactive protocol
+AtPublicFiles.AtFiles.HonestTerm.honestProvers | definition
+OnBytes.Prover.ThreeProvers | definition
+AtPublicFiles.AtFiles.protocolAtFiles | definition
+AtPublicFiles.AtFiles.HonestTerm.offlineProver | definition
+AtPublicFiles.AtFiles.HonestTerm.linkProver | definition
+AtPublicFiles.AtFiles.HonestTerm.onlineProver | definition
+AtPublicFiles.AtFiles.HonestTerm.Parts | definition
+AtPublicFiles.AtFiles.HonestTerm.thePartsAt | definition
+! fold-end
+! fold The same provers, as named in the statements on the interactive protocol
+VerifiableInference.Compilation.HonestProvers.ofThreeProvers | definition
+FlashProve.committerCoinCountLessOne | definition
+! fold-end
+! fold What compilation adds: one copy, the runs of the online IOP, the search limits
+VerifiableInference.Compilation.CompiledPart | definition
+VerifiableInference.Compilation.compiledPartAtHonestProvers | definition
+VerifiableInference.Compilation.CompiledSettings | definition
+VerifiableInference.Compilation.FlashProtocol | definition
+VerifiableInference.Compilation.FlashReading | definition
+VerifiableInference.Compilation.flashLayout | definition
+VerifiableInference.Compilation.theSettings | definition
+VerifiableInference.Compilation.settingsOf | definition
+VerifiableInference.Compilation.SearchLimits | definition
+VerifiableInference.Compilation.writtenLimits | definition
+VerifiableInference.Compilation.theCoinBound | definition
+! fold-end
+! fold The column budget
+VerifiableInference.Compilation.TableBudgetFits | definition
+AtPublicFiles.Premises.indexPrivacyNumbers | definition
+! fold-end
+! fold The numbers
+VerifierAndGoals.completenessErrorBound | definition
+VerifierAndGoals.honestBudget | definition
+VerifierAndGoals.queryBudget | definition
+! fold-end
+! fold FlashProve's parts
+VerifiableInference.Compilation.flashProveWiring | definition
+VerifiableInference.Compilation.wiringOf | definition
+VerifiableInference.Compilation.bytesWriter | definition
+VerifiableInference.Compilation.formatOf | definition
+! fold-end
+! fold The three provers
+AtPublicFiles.Bridge.proversOf | definition
+AtPublicFiles.AtFiles.FullSizeMatrix | definition
+Iop.Honest | definition
+Iop.BatchHonestProver | definition
+AtPublicFiles.Bridge.Family | definition
+OnBytes.Flat.Files.fixedMessageProvers | definition
+ProofFile.Honest.Term.familyOf | definition
+! fold-end
+! fold The offline prover: the offline proof, on the committed table
+AtPublicFiles.AtFiles.HonestTerm.offlineDescription | definition
+AtPublicFiles.AtFiles.HonestTerm.OfflineDescription | definition
+AtPublicFiles.AtFiles.keyFileDescription | definition
+AtPublicFiles.AtFiles.HonestTerm.Parts.prover | definition
+AtPublicFiles.KeyFile.keyProver | definition
+AtPublicFiles.KeyFile.KeyParts | definition
+AtPublicFiles.KeyFile.sharedChainProverSidesInOrder | definition
+AtPublicFiles.KeyLay.withTests | definition
+AtPublicFiles.KeyThread.rangesTestJob | definition
+AtPublicFiles.KeyLay.proverSideOfGuardedSending | definition
+AtPublicFiles.KeyLay.withTestsOnUAndOmega | definition
+AtPublicFiles.KeyLay.proverSideOfTestOnU | definition
+AtPublicFiles.KeyLay.proverSideOfTestOnOmega | definition
+AtPublicFiles.AtFiles.HonestTerm.offlineTestParametersOnU | definition
+AtPublicFiles.AtFiles.HonestTerm.offlineTestOnOmega | definition
+H2U.proximityTestParametersAt | definition
+AtPublicFiles.AtFiles.HonestTerm.offlineSenders | definition
+AtPublicFiles.KeyValues.withSendingsAndLookups | definition
+AtPublicFiles.KeyValues.indexMaskSending | definition
+AtPublicFiles.KeyValues.multiplicitiesSending | definition
+AtPublicFiles.KeyValues.batchedRowsSending | definition
+AtPublicFiles.KeyValues.constraintRowsAtClaimPoints | definition
+AtPublicFiles.AtFiles.HonestTerm.withStoredColumnsAndPlan | definition
+AtPublicFiles.AtFiles.HonestTerm.storedColumn | definition
+AtPublicFiles.AtFiles.HonestTerm.matrixReader | definition
+AtPublicFiles.KeyValues.matrixEntryOf | definition
+AtPublicFiles.KeyValues.multiplicitiesGroups | definition
+AtPublicFiles.AtFiles.HonestTerm.offlineProverCoinCounts | definition
+AtPublicFiles.AtFiles.HonestTerm.fallbackSenders | definition
+AtPublicFiles.KeyPartsIdle.fixedKeyParts | definition
+AtPublicFiles.AtFiles.offlineProverWithEncodedTable | definition
+AtPublicFiles.AtFiles.offlineProverInThreeProtocols | definition
+AtPublicFiles.AtFiles.offlineProverAtFilesDecision | definition
+AtPublicFiles.AtFiles.offlineOneInstanceProverAtFiles | definition
+AtPublicFiles.AtFiles.offlineOneInstanceProver | definition
+AtPublicFiles.AtFiles.offlineBatchProver | definition
+AtPublicFiles.AtFiles.HonestTerm.offlineStart | definition
+AtPublicFiles.AtFiles.HonestTerm.RunValue | definition
+AtPublicFiles.AtFiles.HonestTerm.runValueBytes | definition
+! fold-end
+! fold The link: from a further encoding to the first
+AtPublicFiles.AtFiles.linkProverAtFiles | definition
+OnBytes.LinkSim.AtHome.explicitLinkProver | definition
+! fold-end
+! fold The online prover: the proof for a request
+ProofFile.onlineFirstChainAt | definition
+AtPublicFiles.AtFiles.HonestTerm.onlineProverAt | definition
+AtPublicFiles.AtFiles.onlineProversOfCommitter | definition
+AtPublicFiles.AtFiles.onlineProversAlongInstanceMap | definition
+AtPublicFiles.AtFiles.onlineProversAtOwnInstances | definition
+AtPublicFiles.Bridge.honestProversByCopyNumber | definition
+ProofFile.Honest.Term.onlineMaker | definition
+ProofFile.Honest.onlineProverFromPublicFiles | definition
+ProofFile.Honest.OnlineProverWithDescription | definition
+ProofFile.Honest.Term.OnlineReturn | definition
+ProofFile.Honest.Term.onlineFilling | definition
+ProofFile.Honest.OnlineProverParts | definition
+ProofFile.Honest.onlineProverPartsInUse | definition
+ProofFile.Honest.LongLots.plain | definition
+ProofFile.Honest.openHonest | definition
+ProofFile.Honest.Term.matrixInput | definition
+ProofFile.Honest.Term.tableCoins | definition
+! fold-end
+! fold From a prover to its strategies, down to a round's message
+ProofFile.Honest.honestBatchProverOfFile | definition
+ProofFile.Honest.KeyAndJoiningRoundMessages | definition
+ProofFile.Honest.sharedPartStrategyTrackingVerifier | definition
+ProofFile.Honest.requestStrategyTrackingVerifier | definition
+ProofFile.Honest.sharedChainStart | definition
+ProofFile.Honest.ready | definition
+ProofFile.Honest.readyShared | definition
+ProofFile.Honest.chainStartOrHalted | definition
+ProofFile.Honest.requestStrategyOverSeparateChain | definition
+ProofFile.Honest.sharedStrategyOverSharedChain | definition
+ProofFile.Honest.advanceOverRounds | definition
+ProofFile.Honest.progressAfterChallenge | definition
+ProofFile.Honest.ChainProgress | definition
+ProofFile.Honest.ChainProgress.say | definition
+ProofFile.Honest.Step | definition
+ProofFile.Honest.Step.tell | definition
+! fold-end
+! fold The components of a prover
+ProofFile.Honest.Prover | definition
+ProofFile.Honest.Local | definition
+ProofFile.Honest.Common | definition
+ProofFile.Honest.ProverCoinCounts | definition
+ProofFile.Honest.Placed | definition
+ProofFile.Honest.Part | definition
+ProofFile.Honest.Move | definition
+ProofFile.Honest.K1.proverSideOfSending | definition
+ProofFile.Honest.K3.proverSideOfLookupInChain | definition
+ProofFile.Honest.K12.proverSideOfProximityTest | definition
+ProofFile.Honest.K13.proverSideOfClaimCombination | definition
+ProofFile.Honest.K14.proverSidesOfSharedRounds | definition
+ProofFile.Honest.K14.proverSidesOfSharedSendings | definition
+! fold-end
+! fold The honest provers and settings at the compiled level
+VerifiableInference.Compilation.neverBuiltInstance | definition
+VerifiableInference.Compilation.CompilerWiring.layoutAtReading | definition
+! fold-end
+! fold The further choices of the honest committer and prover
+VerifiableInference.Compilation.saltStartsAtHonestProvers | definition
+VerifiableInference.Compilation.formatSaltStartsGivenDescriptions | definition
+VerifiableInference.Compilation.saltStartsAlongEquation | definition
+VerifiableInference.Compilation.honestProversGivenDescriptions | definition
+VerifiableInference.Compilation.zeroSaltStarts | definition
+VerifiableInference.Compilation.SaltStarts.underRefusal | definition
+VerifiableInference.Compilation.SaltStarts | definition
+VerifiableInference.Compilation.flashProveRequestLeafSaltLayout | definition
+VerifiableInference.Compilation.formatRequestLeafSaltLayout | definition
+VerifiableInference.Compilation.RequestLeafSaltLayout | definition
+VerifiableInference.Compilation.theLeafFiller | definition
+VerifiableInference.Compilation.baseCoinNumbers | definition
+VerifiableInference.Compilation.baseReading | definition
+! fold-end
+! fold How the compiler constructs the committer and the prover from the honest provers and settings
+VerifiableInference.Compilation.honestSide | definition
+OnBytes.FrontRoad.committerAndProverOverOneHash | definition
+! fold-end
+! fold The terms of this appendix
+> **The protocol's objects.**
+! table protocoltermsa
+> **How an IOP is written.**
+! table protocoltermsb
+> **From a written IOP to the protocol.**
+! table protocoltermsc
+> **Words of the sub-protocols.**
+! table protocoltermsd
+- The terms sub-protocol, segment, chain, claim, linear constraint, group, oracle message, tenant, seed, answer, masked sumcheck, batching, fold, code switch, base case and public check are used as defined in the appendix's table of terms.
+- Number and address: the sub-protocol's number in its chain, counted from 0, and its address ⟨chain, segment or –, number there⟩.
+- Kind: there are fifteen kinds, each listed here by its plain name, followed by its label in the Lean type `KindName` and a Lean definition of that kind (for the last two, the list that contains its sub-protocols).
+- "none" marks a sub-protocol without a kind: a row of the fold's own text, that is, a segment's frame or a chain's end (Lean: `frame`).
+- Oracle message with out-of-domain sample (`K1`; `VerifiableInference.Desc.K1.sendOwn`): two rounds. The prover sends oracle messages and out-of-domain seeds are sampled; then the prover sends the answers.
+- Code switch between segments (`K2`; `VerifiableInference.Desc.First.K2.codeSwitchKind`): two rounds. The prover sends oracle messages and out-of-domain seeds are sampled; then the prover sends the answers, and positions are sampled at which listed oracle messages of the same chain are opened.
+- Product-tree lookup argument (`K3`; `VerifiableInference.Desc.K3.lookupKind`): rounds that send no oracle message; it states the lists of claims `objects`, `planes` and `guests` in the offline IOP's form, and `objects` and `guests` in its other form (`VerifiableInference.Desc.K3.Law.blockVia`).
+- Layer-segment sumchecks (`K4`; `OnBytes.Desc.First.K4.block`): the rounds specific to a segment of layers, in which no oracle message is sent or opened; they leave the lists of claims `front` and `back` and a check after the batching.
+- Attention-segment sumchecks (`K5`; `VerifiableInference.Desc.First.Att.P.attentionKind`): the rounds specific to an attention segment, which send no oracle message; it takes its lists of claims as an argument.
+- Output-head sumchecks (`K6`; `VerifiableInference.Desc.Kinds.Head.kind`): the rounds specific to the output head, which send and open no oracle message and leave the lists of claims `norm`, `policy` and `logits`, with `join` inserted after the first (`VerifiableInference.Desc.Kinds.Head.kindWithJoin`).
+- Next-token message (`K7`; `VerifiableInference.Desc.Kinds.Reply.kind`): one round in which the prover sends the next token as one element and nothing is sampled; the verifier rejects if an element was already stored or the element is not a token of the vocabulary.
+- Draw of the approximate range proof (`K8`; `VerifiableInference.Desc.First.K8.whole`): the smallness test, consisting of one round that samples a matrix with entries −1, 0 or 1 and sends no oracle message, one list of claims, and two steps after the segment's batching.
+- Segment claim batching (`K9`; `VerifiableInference.Desc.K9.batch`): a segment's batching; two further sub-protocols of this kind come just before and just after the segment-closing row fold.
+- Segment-closing row fold (`K10`; `VerifiableInference.Desc.First.Close.kind`): 2 + k rounds that close a segment: a batching of linear constraints of the segment's group, then a fold of 1 + k rounds; no oracle message is sent or opened.
+- Output-head committed-table sumcheck (`K11`; `Johnson.Desc.First.ForkMerge.headClaimMergeKind`): lk + 4 rounds in the head's segment: a batching challenge and a masked sumcheck on the head's one claim on the committed table, which leave one claim; no oracle message is sent or opened.
+- Proximity test with linear constraints (`K12`; `VerifiableInference.Desc.K12.proximityTestKind`): a batching round; for each stage except the last, a fold of 1 + k rounds and a code switch of 2 rounds; then a base case of 2 rounds.
+- Committed-table claim merge (`K13`; `VerifiableInference.Desc.K13.claimCombinationBlock`): 2 + kCol rounds after the segments: one sampled element batches the two or more claims left on the committed table, and a masked sumcheck reduces them to one; no oracle message is sent or opened.
+- Committed-table claim reduction (`K14`; `Desc.K14.blocks`): the test on the committed table. Six sub-protocols in the second chain, around two sub-protocols of the kind "oracle message with out-of-domain sample", sample two points and the positions at which the table is opened, impose linear constraints and assign tenants to groups. One sub-protocol in the third chain (`VerifiableInference.Desc.Third.batchLinearConstraintsSecondPart`), with no rounds, adopts an oracle message of the second chain and adds a linear constraint.
+- Two-table comparison steps (`K15`; `Desc.K15.linkBlocksBeforeTest`): the link IOP's steps on its two committed tables, around a sub-protocol of the kind "oracle message with out-of-domain sample". They are: a sampled point; one sub-protocol with no round on the two tables' out-of-domain samples; sampled positions, with the first table opened at the first `columnsFirst` of them and the second table at the next `columnsFurther`; and a further sampled value, from which one linear constraint is added to the group.
+- Names of the chains in Lean: in the structure of a written IOP, the fields `first`, `shared` and `second` are the first, second and third chain, respectively. Names of the IOPs in Lean: the offline IOP is the field `key` of `Files` and the field `offline` of `Iop.HolographicProtocol`; the link IOP is `entry` and `link`; the online IOP is `proof` and, with its round marking, `onlineBatch`. Comments in the Lean code call the three IOPs the key file, the entry file and the proof file, after the files that contain their proofs.
+- Rounds, oracle messages sent: for one sub-protocol and for the full-size public files. Each oracle message is one Merkle tree and can have several tenants. A dash means that no value is given.
+! fold-end
+- The offline IOP has 35 sub-protocols, the link IOP 8 and the online IOP 374: 417 in total. By kind:
+! table protocolkinds
+! fold The offline IOP, sub-protocol by sub-protocol
+! table protocolkey
+> The numbers of rounds are given by L₁, L₂, L₃ and the theorem `laid_rounds_in_scope`. The addresses and kinds are given by the definitions `Key.wantedFirst`, `Key.wantedShared`, `Key.wantedSecond` and the theorem `desc_lists`.
+! fold-end
+! fold The link IOP, sub-protocol by sub-protocol
+! table protocollink
+> The order and kinds are read off the definitions `Desc.K15.linkBlocksBeforeTest` and `Desc.K15.linkProtocolChain`. The numbers of rounds are obtained from these definitions and the written parameters `Desc.K15.frP`.
+! fold-end
+! fold The online IOP, sub-protocol by sub-protocol
+> The first chain has 25 segments: numbers 0, 2, …, 22 treat layers, numbers 1, 3, …, 23 attention, and number 24 the head. An ordinary segment l has 14 sub-protocols, numbered 1 + 14·l + j, j = 0 … 13.
+! table protocolproof
+> The addresses, kinds, numbers of rounds and oracle messages sent are given by the values `PlanWritten.cutFirstFull`, `PlanWritten.cutSharedFull`, `PlanWritten.cutSecondFull`, with the theorems `laidPOf_pins_scope` and `cut_of_row`.
+! fold-end
+! fold The format in which an IOP is written (one form with three chains, one with one chain)
+VerifiableInference.Desc.KindName | definition
+VerifiableInference.Desc.Place | definition
+Fmt.Entry | definition
+Fmt.Shape | definition
+Fmt.Stored | definition
+Fmt.partOf | definition
+Fmt.partsFrom | definition
+Fmt.increasing | definition
+Fmt.storedKey | definition
+Fmt.insertIntoIncreasingList | definition
+Fmt.listOf | definition
+Fmt.Item | definition
+Fmt.ItemValue | definition
+Fmt.Drawn | definition
+Fmt.RoundView | definition
+Fmt.View | definition
+VerifiableInference.Desc.OpenedColumn | definition
+Fmt.TreeSource | definition
+Fmt.DeclaredRound | definition
+VerifiableInference.Desc.SymbolComponent | definition
+VerifiableInference.Desc.Oracle | definition
+VerifiableInference.Desc.Block | definition
+VerifiableInference.Desc.Kind | definition
+VerifiableInference.Desc.KindWithGuestIdentities | definition
+VerifiableInference.Desc.Link | definition
+VerifiableInference.Desc.Chain | definition
+VerifiableInference.Desc.FileDescription | definition
+VerifiableInference.Desc.OneChainFileDescription | definition
+! fold-end
+! fold Running a sub-protocol, a segment and a chain: one fold, used by all three IOPs
+VerifiableInference.Desc.named | definition
+VerifiableInference.Desc.need | definition
+VerifiableInference.Desc.groupsOf | definition
+VerifiableInference.Desc.itemOf | definition
+VerifiableInference.Desc.drawsMarkedNonzeroHaveNonzeroWords | definition
+VerifiableInference.Desc.roundsFit | definition
+VerifiableInference.Desc.regroup | definition
+VerifiableInference.Desc.noDigest | definition
+VerifiableInference.Desc.Block.step | definition
+VerifiableInference.Desc.claimsInStep | definition
+VerifiableInference.Desc.claimsInBy | definition
+VerifiableInference.Desc.afterIn | definition
+VerifiableInference.Desc.namesOk | definition
+VerifiableInference.Desc.orderOk | definition
+VerifiableInference.Desc.orderAfterOk | definition
+VerifiableInference.Desc.Block.hasNoClaimsAndNothingAfter | definition
+VerifiableInference.Desc.Link.runBehind | definition
+VerifiableInference.Desc.Link.blocksInOrder | definition
+VerifiableInference.Desc.Chain.blocksInOrder | definition
+VerifiableInference.Desc.fieldPrimeWord | definition
+VerifiableInference.Desc.viewWordsBelowPrime | definition
+VerifiableInference.Desc.foldBlocks | definition
+VerifiableInference.Desc.withEmptySealRound | definition
+VerifiableInference.Desc.chainAt | definition
+! fold-end
+! fold The public checks on a written IOP
+VerifiableInference.Desc.BookPlan.DeclaredRoundsByChain | definition
+VerifiableInference.Desc.BookPlan.SentOraclesByChain | definition
+VerifiableInference.Desc.BookPlan.Opening | definition
+VerifiableInference.Desc.BookPlan.openings | definition
+VerifiableInference.Desc.BookPlan.rootOf | definition
+VerifiableInference.Desc.BookPlan.onSymbolComponents | definition
+VerifiableInference.Desc.BookPlan.sum | definition
+VerifiableInference.Desc.BookPlan.rows | definition
+VerifiableInference.Desc.BookPlan.everyOpenedTreeIsListed | definition
+VerifiableInference.Desc.BookPlan.range | definition
+VerifiableInference.Desc.BookPlan.alike | definition
+VerifiableInference.Desc.BookPlan.oneGroup | definition
+VerifiableInference.Desc.BookPlan.once | definition
+VerifiableInference.Desc.BookPlan.saySampled | definition
+VerifiableInference.Desc.BookPlan.answeredIn | definition
+VerifiableInference.Desc.BookPlan.answered | definition
+VerifiableInference.Desc.BookPlan.sentOraclesMatchEntries | definition
+VerifiableInference.Desc.BookPlan.holdsSampled | definition
+VerifiableInference.Desc.BookPlan.inTime | definition
+VerifiableInference.Desc.BookPlan.inOrderIn | definition
+VerifiableInference.Desc.BookPlan.inOrder | definition
+VerifiableInference.Desc.BookPlan.clauses | definition
+VerifiableInference.Desc.BookPlan.allClausesHold | definition
+VerifiableInference.Desc.FileDescription.roundsDeclaredByBlocks | definition
+VerifiableInference.Desc.FileDescription.places | definition
+VerifiableInference.Desc.Block.shaped | definition
+VerifiableInference.Desc.openedOwn | definition
+VerifiableInference.Desc.FileDescription.lastChainFirstTreeNumber | definition
+VerifiableInference.Desc.FileDescription.labelsOk | definition
+VerifiableInference.Desc.blocksOk | definition
+VerifiableInference.Desc.sentOf | definition
+VerifiableInference.Desc.sendRound | definition
+VerifiableInference.Desc.drawsAny | definition
+VerifiableInference.Desc.beforeAt | definition
+VerifiableInference.Desc.oraclesOf | definition
+VerifiableInference.Desc.FileDescription.beforeOk | definition
+VerifiableInference.Desc.FileDescription.roots | definition
+VerifiableInference.Desc.FileDescription.treeSharingOk | definition
+VerifiableInference.Desc.FileDescription.placesOk | definition
+VerifiableInference.Desc.readsFit | definition
+VerifiableInference.Desc.FileDescription.readsOk | definition
+VerifiableInference.Desc.FileDescription.sealLast | definition
+VerifiableInference.Desc.FileDescription.sentFit | definition
+VerifiableInference.Desc.FileDescription.planOkCore | definition
+VerifiableInference.Desc.FileDescription.planOk | definition
+VerifiableInference.Desc.FileDescription.wantedOk | definition
+VerifiableInference.Desc.beforesOf | definition
+VerifiableInference.Desc.FileDescription.owedOk | definition
+VerifiableInference.Desc.roundlessChain | definition
+VerifiableInference.Desc.OneChainFileDescription.asFile | definition
+VerifiableInference.Desc.OneChainFileDescription.roundsDeclaredByBlocks | definition
+VerifiableInference.Desc.OneChainFileDescription.storedOk | definition
+VerifiableInference.Desc.OneChainFileDescription.planClauses | definition
+VerifiableInference.Desc.OneChainFileDescription.planOk | definition
+! fold-end
+! fold The two decisions, which run the chains: one for the offline and the online IOP, one for the link IOP
+VerifiableInference.Desc.FileDescription.planWord | definition
+VerifiableInference.Desc.runCore | definition
+VerifiableInference.Desc.FileDescription.runEnd | definition
+VerifiableInference.Desc.FileDescription.run | definition
+VerifiableInference.Desc.FileDescription.pull | definition
+VerifiableInference.Desc.OneChainFileDescription.planWord | definition
+VerifiableInference.Desc.OneChainFileDescription.runEnd | definition
+VerifiableInference.Desc.OneChainFileDescription.run | definition
+! fold-end
+! fold The three IOPs chain by chain
+VerifiableInference.Desc.Key.descriptionFromSource | definition
+VerifiableInference.Desc.Key.firstChain | definition
+VerifiableInference.Desc.Key.sharedChain | definition
+VerifiableInference.Desc.Key.thirdChain | definition
+ProofFile.onlineDescription | definition
+ProofFile.onlineDescriptionFromBlockTables | definition
+ProofFile.onlineDescriptionFromPublicPart | definition
+ProofFile.onlineDescriptionAfterTests | definition
+ProofFile.onlineFirstChainBlockTables | definition
+ProofFile.onlineSharedChain | definition
+ProofFile.onlineLastChain | definition
+VerifiableInference.Desc.First.ModelPart | definition
+VerifiableInference.Desc.First.kindOfModelPart | definition
+VerifiableInference.Desc.First.kindsBeforeBatching | definition
+VerifiableInference.Desc.First.backKinds | definition
+VerifiableInference.Desc.First.closeKinds | definition
+VerifiableInference.Desc.First.Blocks | definition
+VerifiableInference.Desc.First.linkAt | definition
+VerifiableInference.Desc.First.firstChainWithoutReplyGuard | definition
+VerifiableInference.Desc.First.firstChain | definition
+Desc.K14.blocks | definition
+VerifiableInference.Desc.Third.lastChainWithOwnTest | definition
+Desc.K15.linkBlocksBeforeTest | definition
+Desc.K15.linkDescriptionAt | definition
+Desc.K15.linkDecisionAtParameterFile | definition
+! fold-end
+! fold The kinds of sub-protocol
+VerifiableInference.Desc.K1.sendOwn | definition
+VerifiableInference.Desc.K1.commitOwn | definition
+VerifiableInference.Desc.K1.firstSegmentOpening | definition
+VerifiableInference.Desc.First.K2.codeSwitchKind | definition
+VerifiableInference.Desc.K3.lookupKind | definition
+VerifiableInference.Desc.K3.Law.blockVia | definition
+OnBytes.Desc.First.K4.block | definition
+VerifiableInference.Desc.First.Att.P.attentionKind | definition
+VerifiableInference.Desc.Kinds.Head.kind | definition
+VerifiableInference.Desc.Kinds.Head.kindWithJoin | definition
+VerifiableInference.Desc.Kinds.Reply.kind | definition
+VerifiableInference.Desc.First.K8.approximateRangeProofDrawKind | definition
+VerifiableInference.Desc.First.K8.whole | definition
+VerifiableInference.Desc.K9.batch | definition
+VerifiableInference.Desc.First.Close.kind | definition
+Johnson.Desc.First.ForkMerge.headClaimMergeKind | definition
+VerifiableInference.Desc.K12.proximityTestKind | definition
+VerifiableInference.Desc.K12.guardedProximityTestParts | definition
+VerifiableInference.Desc.K13.claimCombinationBlock | definition
+VerifiableInference.Desc.Third.batchLinearConstraintsSecondPart | definition
+VerifiableInference.Desc.roundlessBlock | definition
+VerifiableInference.Desc.ChainEnd.chainEnd | definition
+! fold-end
+! fold How FlashProve's description is assembled
+VerifierAndGoals.SecondHashFunctionType | definition
+VerifierAndGoals.Description | definition
+Hiop.ConfigurationWithOutOfDomainSample | definition
+FlashProve.descriptionOfDataWithReading | definition
+FlashProve.DescriptionData | definition
+OnBytes.Slice.DecR.Claims | definition
+OnBytes.Flat.Coding | definition
+OnBytes.Flat.FilesParameters | definition
+FlashProve.dataAtFiles | definition
+FlashProve.dataAtFilesFromRounds | definition
+FlashProve.DescriptionData.filesParametersOrDefault | definition
+FlashProve.DescriptionData.keyRoundsOrEmpty | definition
+FlashProve.DescriptionData.proofRoundsOrEmpty | definition
+FlashProve.emptyRoundsData | definition
+FlashProve.roundsDataFit | definition
+OnBytes.Maker.Page.kindsAndWorkBelow256 | definition
+FlashProve.DescriptionDataAtFiles | definition
+FlashProve.DescriptionDataAtFiles.toDescriptionFields | definition
+FlashProve.DescriptionDataAtFiles.inputFieldsAtReadings | definition
+FlashProve.DescriptionDataAtFiles.inputFieldsAtReadingsAsBytes | definition
+FlashProve.descriptionOnBytesWithReading | definition
+FlashProve.descriptionWithDecoderAndReading | definition
+FlashProve.committerAndProverWithParser | definition
+FlashProve.parserWithDecoder | definition
+FlashProve.CommitterAndProver | definition
+FlashProve.descriptionOfFieldsWithReading | definition
+FlashProve.DescriptionFields | definition
+FlashProve.CommitterProverFormAndParser | definition
+OnBytes.Flat.relationsAndEncodingOfClaims | definition
+OnBytes.Slice.DecR.RelationsAndEncoding | definition
+OnBytes.Slice.DecR.configurationOfStoredTable | definition
+VerifiableInference.OnPublicFiles.threeProtocolsAtFullSize | definition
+OnBytes.RunA.filesAt | definition
+OnBytes.RunA.filesOf | definition
+OnBytes.Flat.Files | definition
+OnBytes.Flat.Files.withProvers | definition
+OnBytes.Maker.reductionOfWholeFile | definition
+Iop.IOR.toInteractiveOracleProof | definition
+VerifiableInference.OnPublicFiles.linkProtocolAtFullSize | definition
+OnBytes.RunA.LinkProtocolWithLeafCoding | definition
+VerifiableInference.OnPublicFiles.linkProtocolWithWireAtFullSize | definition
+OnBytes.K.Arm.linkProtocolWithWireOfRoundData | definition
+OnBytes.Flat.linkProtocolOfRoundData | definition
+OnBytes.Flat.linkSkeletonOfRoundData | definition
+TypedOracleCompiler.Run.PQ.skeletonOverBothExternalStrings | definition
+Run.PQ.everyOpeningHasItsDraws | definition
+TypedOracleCompiler.Run.PQ.symbolsCarryTheirPositions | definition
+FlashProve.flashProveDataAtSecondHash | definition
+FlashProve.flashProveDataNoExtractorAtHash | definition
+FlashProve.theClaims | definition
+FlashProve.theCoding | definition
+FlashProve.theProversAt | definition
+FlashProve.theHonest | definition
+FlashProve.fixedCommitterAndProver | definition
+FlashProve.theKeyGateAt | definition
+FlashProve.theProofGateAt | definition
+FlashProve.theLinkGateAt | definition
+VerifiableInference.OnPublicFiles.gatedFileDecision | definition
+VerifiableInference.OnPublicFiles.gatedLinkDecision | definition
+FlashProve.protocolDataWellFormedAt | definition
+FlashProve.dataWellFormedAtFullSizeDepth | definition
+FlashProve.dataWellFormedApartFromDepth | definition
+VerifiableInference.OnPublicFiles.sizeNumbersFitAtPlan | definition
+VerifiableInference.OnPublicFiles.sizeNumbersFitAtFullSize | definition
+FlashProve.listsFull | definition
+FlashProve.filesParametersOrRefusalAt | definition
+FlashProve.thePlanAt | definition
+FlashProve.theKeyRunAt | definition
+FlashProve.theKeyDataAt | definition
+FlashProve.keyDataAndDecisionOrRefusalAt | definition
+VerifiableInference.Desc.Key.keyDataAndDecisionAtFixedDigest | definition
+VerifiableInference.Desc.Key.fixedDigest | definition
+VerifiableInference.Desc.fixedConfigurationDigest | definition
+VerifiableInference.Desc.Key.keyDataAndDecisionAtDigest | definition
+VerifiableInference.Desc.Key.keyDataAndDecisionOfPlannerAnswer | definition
+VerifiableInference.Desc.Key.descriptionFromPlan | definition
+VerifiableInference.Desc.Key.keyDataAndDecisionOfDescription | definition
+VerifiableInference.Desc.Key.KeyDataAndDecisionOrRefusal | definition
+VerifiableInference.Desc.Key.KeyRun | definition
+VerifiableInference.Desc.Key.keyInstanceOfOutOfDomainSample | definition
+VerifiableInference.Desc.FileDescription.data | definition
+FlashProve.theProofRunAt | definition
+FlashProve.theProofDataAt | definition
+FlashProve.proofDataAndDecisionOrRefusalAt | definition
+LPFD.Full.proofDataAndDecisionOfPublicFiles | definition
+LPFD.Full.proofDataAndDecisionOfDescription | definition
+LPFD.Full.proofDecisionOfDescription | definition
+LPFD.Full.instanceAsPlainRecord | definition
+FlashProve.linkDecisionAtFiles | definition
+Desc.K15.linkAt | definition
+Desc.K15.linkDeclaredRounds | definition
+Desc.K15.linkRoundsMatchPlan | definition
+! fold-end
+> `VerifierAndGoals.storedLines` has no card on this page; it is in the Lean file Ladder/Stored.lean:237.
+== Appendix B. The two hash functions | sec-app-hash
+> (1) `blake2bHash` is the function that `leanVerifier` uses in place of the random oracle. It is not plain BLAKE2b; it is computed as follows:
+- the bit string is first written as bytes;
+- the bytes are parsed as one call to the format's hash, `Fmt.formatHash` (a number, a tree, an index, a start, bytes), and the output is 32 bytes of BLAKE2b of that call, with bytes 0 to 15 of the start as salt and bytes 16 to 31 as personalization;
+- every other string, and a call with half 1 under a number other than 162, is hashed whole under one reserved number.
+> (2) `secondHashFunction` is the fixed function in the protocol's description: BLAKE2b's compression function with a number and the input's length in 32-bit words (rounded down) in the high word of the counter. In the statements, (1) is sampled at random and (2) is fixed.
+! fold The definitions
+VerifiableInference.Compilation.blake2bHash | definition
+VerifiableInference.OnPublicFiles.hashOf | definition
+Fmt.blake2b | definition
+Fmt.oracle | definition
+Fmt.formatHash | definition
+OnBytes.formatHashFastForm | definition
+OnBytes.formatHashFastForm_eq_formatHash | proved
+OnBytes.secondHashFunctionState | definition
+OnBytes.secondHashFunction | definition
+OnBytes.secondHashFunctionTree | definition
+! fold-end
+! fold BLAKE2b: the compression function, its constants and its schedule
+Run.Blake2b.ChainingValue | definition
+Run.Blake2b.MessageBlock | definition
+Run.Blake2b.WorkVector | definition
+Run.Blake2b.Quad | definition
+Run.Blake2b.IV | definition
+Run.Blake2b.rotr64 | definition
+Run.Blake2b.G | definition
+Run.Blake2b.ROUND | definition
+Run.Blake2b.State | definition
+Run.Blake2b.compress | definition
+Run.Blake2b.byteOrZero | definition
+Run.Blake2b.load64Plain | definition
+Run.Blake2b.MessageBlock.ofBytesPlain | definition
+Run.Blake2b.incrementCounter | definition
+Run.Blake2b.setLastblock | definition
+Run.Blake2b.init0 | definition
+Run.Blake2b.initParam | definition
+Run.Blake2b.parameterBlockFirstWord | definition
+Run.Blake2b.firstStateSaltedPlain | definition
+Run.Blake2b.updateBlocks | definition
+Run.Blake2b.finalBlock | definition
+Run.Blake2b.message | definition
+Run.Blake2b.stateSaltedPlain | definition
+Run.Blake2b.store64 | definition
+Run.Blake2b.ChainingValue.bytes64 | definition
+Run.Blake2b.ChainingValue.bytes | definition
+Run.Blake2b.blake2bSaltedPlain | definition
+! fold-end
+== Appendix C. The integer model | sec-app-model
+> This appendix presents the integer model, from the definitions named in `CanServe` and `requestOutcome` (`modelNextToken`, `RequestForm`, `requestResult`) down to arithmetic.
+> **The cards.** A card names the definitions that it uses. Each of these, except those of Lean's own library, has its own card in this appendix (the five packed arrays of numbers are named but not printed). The small auxiliary definitions (such as `entry`, `tabulate`, `sumOver`, `roundShift`, `clamp`) are in the last folded section.
+> **Range conditions.** A range condition is a bound outside which the model is undefined (`allConditionsHold`).
+> **The files.** The Lean code is in IntegerModel/Model.lean ({lines IntegerModel/Model.lean} lines), VerifiableInference/ModelWeights.lean and VerifiableInference/RequestResult.lean, with one definition from IntegerModel/Window.lean; the first card is from VerifiableInference/Statements.lean.
+> **The comments in the Lean code.** A short comment at the end of a Lean line, such as `-- Vx` or `-- sigma`, gives the symbol for that value in docs/model.md ("The integer model"); "section 7" in two comments refers to a section of that file. The numbers 1 to 8 in the comments of the range conditions enumerate these conditions. The definitions can be read without these comments.
+! fold A token
+VerifiableInference.Token | definition
+! fold-end
+! fold The model's result on a request
+VerifiableInference.requestResult | definition
+VerifiableInference.RequestForm | definition
+IntegerModel.zeroFilledWindow | definition
+VerifiableInference.modelNextToken | definition
+IntegerTransformer.model | definition
+IntegerTransformer.isPrompt | definition
+! fold-end
+! fold Weights, settings and tables: the types
+IntegerTransformer.IntegerVector | definition
+IntegerTransformer.Matrix | definition
+IntegerTransformer.Settings | definition
+IntegerTransformer.LayerSettings | definition
+IntegerTransformer.Settings.queryWidth | definition
+IntegerTransformer.Settings.keyValueWidth | definition
+IntegerTransformer.Settings.isMixture | definition
+IntegerTransformer.Weights | definition
+IntegerTransformer.LayerWeights | definition
+IntegerTransformer.GatedWeights | definition
+IntegerTransformer.Tables | definition
+IntegerTransformer.KeyedTable | definition
+IntegerTransformer.KeyedTable.read | definition
+! fold-end
+! fold All values of one run
+IntegerTransformer.Trace | definition
+IntegerTransformer.trace | definition
+IntegerTransformer.firstLayers | definition
+IntegerTransformer.streamAbove | definition
+IntegerTransformer.Layer | definition
+IntegerTransformer.layer | definition
+! fold-end
+! fold A layer: normalization
+IntegerTransformer.Norm | definition
+IntegerTransformer.rmsNorm | definition
+! fold-end
+! fold A layer: attention
+IntegerTransformer.Attention | definition
+IntegerTransformer.attention | definition
+IntegerTransformer.Projections | definition
+IntegerTransformer.projections | definition
+IntegerTransformer.rotate | definition
+IntegerTransformer.Head | definition
+IntegerTransformer.attendHead | definition
+! fold-end
+! fold A layer: feed-forward, router and experts
+IntegerTransformer.FeedForward | definition
+IntegerTransformer.feedForward | definition
+IntegerTransformer.HiddenUnits | definition
+IntegerTransformer.hiddenUnits | definition
+IntegerTransformer.downSum | definition
+IntegerTransformer.Routed | definition
+IntegerTransformer.routedExpert | definition
+IntegerTransformer.noRoute | definition
+! fold-end
+! fold The range conditions
+IntegerTransformer.allConditionsHold | definition
+IntegerTransformer.attentionOk | definition
+IntegerTransformer.feedForwardOk | definition
+IntegerTransformer.normOk | definition
+IntegerTransformer.unitsOk | definition
+IntegerTransformer.fits16 | definition
+! fold-end
+! fold Which arrays are weights
+VerifiableInference.ModelWeights | definition
+VerifiableInference.weightsAreValid | definition
+IntegerTransformer.wellFormed | definition
+IntegerTransformer.layerWellFormed | definition
+IntegerTransformer.hasSize | definition
+IntegerTransformer.GatedWeights.hasSizes | definition
+IntegerTransformer.KeyedTable.covers | definition
+VerifiableInference.weightsInRange | definition
+VerifiableInference.layerWeightsInRange | definition
+VerifiableInference.gatedWithin | definition
+VerifiableInference.entriesWithin | definition
+! fold-end
+! fold The five tables' values
+VerifiableInference.lookupTables | definition
+VerifiableInference.cosineTable | definition
+VerifiableInference.sineTable | definition
+VerifiableInference.exponentialTable | definition
+VerifiableInference.siluTable | definition
+VerifiableInference.sigmoidTable | definition
+VerifiableInference.packedEntry | definition
+! fold-end
+! fold Small arithmetic helpers
+Array.entry | definition
+IntegerTransformer.tabulate | definition
+IntegerTransformer.sumOver | definition
+IntegerTransformer.maxUpTo | definition
+IntegerTransformer.firstArgmax | definition
+IntegerTransformer.roundShift | definition
+IntegerTransformer.clamp | definition
+IntegerTransformer.activationBound | definition
+IntegerTransformer.balancedLowByte | definition
+IntegerTransformer.integerSquareRoot | definition
+IntegerTransformer.addVectors | definition
+IntegerTransformer.product | definition
+! fold-end

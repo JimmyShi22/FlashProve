@@ -1,0 +1,119 @@
+-- Copyright 2026 Anthropic PBC
+-- SPDX-License-Identifier: Apache-2.0
+--
+/-
+Johnson/Top/Fire/Code/KeyFillYes.lean: ONE STATEMENT INSIDE On₁' 1 FROM THE FIRST BLOCK's OWN YES, WITH NO TEST ON THE STATE LEFT. Johnson/Top/Fire/Code/KeyFillStep.lean's on₁'_of_step asks of the step's value a: the book-keeping at border 1 · Placed · InOrder · one message.
+Johnson/RunOne/KeySendYes.lean proves all four from the same yes (sent0_of ⟹ Sent0 · shape_send0), where the chain began at the tables' border 0.
+  sent0_of_step   the step's yes at the start ⟹ a.1 = x ∧ Sent0 (start₁ x) a.2
+  on₁'_of_yes     ∃ y', On₁' X N P D baseK atSix kreadFam coll 1 (a, y')
+THE PREMISES OF on₁'_of_yes: q₁ · THE STEP's YES · AT THE START: S0 the tables' book-keeping at border 0 · S0' the start's statement is in order · the instance's key fits · PUBLIC: Public10 · condPort · sampledAt · one shape · the six closed tests · TWO TIES · THE STORED TABLE's SIDE.
+THAT A VIEW EXISTS AT WHICH THE STEP SAYS YES IS NOT SHOWN; THE ORACLES y' ARE BUILT BY US. AN IMPLICATION.
+OBJECT: On₁'; sent0_of | shape_send0 | front0 | decide10 · USER: KeyFillYesPub.lean (on₁'_of_yes) · LETTERS: X N P D · x · r₁ r₂ cols · rad · decT recOf tab coll.
+Nothing on soundness.
+-/
+import Johnson.Top.Fire.Code.KeyFillStep
+import Johnson.Top.Fire.Code.Row10Paid
+
+set_option autoImplicit false
+set_option relaxedAutoImplicit false
+set_option maxRecDepth 40000
+
+noncomputable section
+
+open scoped ENNReal
+
+namespace LPFD
+open VerifiableInference VerifiableInference.OnPublicFiles
+open Rom ZKCP Hiop Prob Cb Cb.Ood OnBytes.Flat OnBytes.Slice OnBytes.Maker OnBytes.RunA
+open _root_.Compile TypedOracleCompiler.Iop TypedOracleCompiler.Compile.Batch TypedOracleCompiler.Compile.Batch.Cms
+open TypedOracleCompiler.Joined
+open _root_.Iop hiding BatchProtocol GrW WireRB RoundsQueryLayout ProtocolQueryLayout QueryLayout
+open _root_.Run _root_.Run.PQ OnBytes
+open VerifiableInference.Desc VerifiableInference.Desc.Sound VerifiableInference.Desc.Plain
+open VerifiableInference.Desc.Key
+open VerifiableInference.Desc.Key (Xi)
+open VerifiableInference.Desc.Key (FirstState)
+open Johnson.RunOne.KeyRows23 (BaseSt AtFk Fk fr₁ fr₂ fr₃ On₁ Cl₁ On₂ Cl₂ On₃ Cl₃ oneAt St₂ St₃ seam₁_at_fk seam₂_at_fk ends_at_fk)
+open Johnson.RunOne.KeyRows1 (FirstLetters firstOn_of firstClaim_of CollCell ReadsL open₁)
+open Johnson.RunOne.KeyRows23 (CellOnly inFront₂ front₂ seat open₃)
+
+open Johnson.RunOne.KeyRows1 (RecStays SendYes₀ sendYes₀ Public10)
+open VerifiableInference.Desc.K1 (Par condPort IsSend sendPiece Sealed shapeAt shapesOf sampledAt errPort seedMaps seedEntry cond_parts)
+open Johnson.Pack (portOmZ)
+
+open VerifiableInference.Desc.Key.Fill (six)
+open Johnson.RunOne.KeyRows23 (baseK kreadFam numSix atSix holdsB)
+open Johnson.RunOne.KeyRows1 (plan₁ readers₁ book₁ n₁ slots₁ ties₁ tiesA shape₁' Sent0 sent0_of front0 shape_send0 pinned_behind0 roundsFit_noDigest')
+open Johnson.Pack (aOf)
+
+section
+variable (X : Source) (N : H2U.PlaceNums) (P : LaterPlaces) (D : WholeD)
+    (c₁ : Block (Fk X N P).S₁ (Fk X N P).Cl) (k₁ : List (Block (Fk X N P).S₁ (Fk X N P).Cl))
+
+/-- **The step's yes at the start lays what Sent0 says.** -/
+theorem sent0_of_step (q₁ : (Fk X N P).first.blocksInOrder = c₁ :: k₁) (Pb : Public10 (oneAt X) pieces (groupsTold X.Y.told.1 0 (rootsAt X.Y.D.1 0)))
+    (ft : ℕ) (x : Xi) (s₀ : FirstState) (S0 : shape₁' (oneAt X) 0 s₀ = true) (S0' : OnBytes.Means.InOrder s₀.d.st)
+    (a : Xi × FirstState) (r₁ r₂ : _root_.Fmt.RoundView) (cols : List OpenedColumn) (n : ℕ)
+    (hstep : (held c₁ : Block (Xi × FirstState) Claim).step ft (x, s₀) [r₁, r₂] cols = .ok (a, n)) : a.1 = x ∧ Sent0 s₀ a.2 := by
+  have hd : (held c₁ : Block (Xi × FirstState) Claim).decide (x, s₀) [noDigest r₁, noDigest r₂] _ = .ok a := step_decides hstep
+  have hf : roundsFit (held c₁ : Block (Xi × FirstState) Claim).rounds [r₁, r₂] = true := (step_fits hstep).1
+  obtain ⟨ha, hy⟩ := held_decide c₁ (x, s₀) _ _ a hd
+  rw [decide10 X N P c₁ k₁ q₁] at hy
+  have hf' : roundsFit (K1.rounds (par10 X)) [noDigest r₁, noDigest r₂] = true := by
+    have e : (held c₁ : Block (Xi × FirstState) Claim).rounds = K1.rounds (par10 X) := rounds10 X N P c₁ k₁ q₁
+    rw [e] at hf
+    exact (roundsFit_noDigest' _ [r₁, r₂]).trans hf
+  obtain ⟨a0, -, c0, d0⟩ := front0 (oneAt X) s₀ S0
+  exact ⟨ha, sent0_of (oneAt X) pieces _ Pb s₀ a.2 _ _ _ hf' hy a0 c0 d0 S0'⟩
+
+end
+
+section
+variable (X : Source) (N : H2U.PlaceNums) (P : LaterPlaces) (D : WholeD)
+    (c₁ : Block (Fk X N P).S₁ (Fk X N P).Cl) (k₁ : List (Block (Fk X N P).S₁ (Fk X N P).Cl))
+    {Cells Rec : Type} [Inhabited Cells] (decT : (ℕ → Option (ℕ × List UInt64)) → Rec → Option Cells) (recOf : Xi → Option Rec) (tab : Cells → ℕ → ℕ → OnBytes.F) (coll : Strs → Rec → Prop)
+
+/-- **ONE STATEMENT INSIDE On₁' 1 FROM THE FIRST BLOCK's OWN YES: NO TEST ON THE STATE IS LEFT.** -/
+theorem on₁'_of_yes (q₁ : (Fk X N P).first.blocksInOrder = c₁ :: k₁) (Pb : Public10 (oneAt X) pieces (groupsTold X.Y.told.1 0 (rootsAt X.Y.D.1 0)))
+    (rad : ℕ → ℕ) (hC : condPort (par10 X) rad = true)
+    (x : Xi) (S0 : shape₁' (oneAt X) 0 ((Fk X N P).start₁ x) = true) (S0' : OnBytes.Means.InOrder ((Fk X N P).start₁ x).d.st)
+    (T4 : x.key.fits (oneAt X).lin.fold.index = true)
+    (a : Xi × FirstState) (r₁ r₂ : _root_.Fmt.RoundView) (cols : List OpenedColumn) (n : ℕ)
+    (hstep : (held c₁ : Block (Xi × FirstState) Claim).step (fr₁ D).ft (x, (Fk X N P).start₁ x) [r₁, r₂] cols = .ok (a, n))
+    (k₀ : Fin (shapesOf (par10 X)).length) (hk : sampledAt (par10 X) k₀) (Z2 : (shapesOf (par10 X)).length = 1)
+    (tieC : (par10 X).codes = Johnson.Top.H.csKey) (tieS : shapeAt (par10 X) k₀ = Johnson.Top.H.shIdx)
+    (t0 t1 t2 : String)
+    (n0 : seatFaultAt (Fk X N P) Johnson.Top.H.csKey t0 Johnson.Top.H.shIdx 0 0 = none)
+    (n1 : seatFaultAt (Fk X N P) Johnson.Top.H.csKey t1 Johnson.Top.H.shMul 1 0 = none)
+    (n2 : seatFaultAt (Fk X N P) Johnson.Top.H.csKey t2 Johnson.Top.H.shW 5 0 = none)
+    (f0 : holdsB (fr₁ D) 0 (aOf Johnson.Top.H.csKey Johnson.Top.H.shIdx) = true)
+    (f1 : holdsB (fr₁ D) 1 (aOf Johnson.Top.H.csKey Johnson.Top.H.shMul) = true)
+    (f2 : holdsB (fr₁ D) 5 (aOf Johnson.Top.H.csKey Johnson.Top.H.shW) = true)
+    (y₀ : (fr₁ D).E.Str)
+    (r : Rec) (L2 : recOf x = some r) (hcell : CollCell coll) (L2' : ¬ coll (strsOf (fr₁ D) y₀) r) :
+    ∃ y' : (fr₁ D).E.Str, y'.1 = y₀.1 ∧
+      On₁' X N P D (baseK Johnson.Top.H.csKey six numSix atSix decT recOf (plan₁ (oneAt X)).orc) atSix (kreadFam Johnson.Top.H.csKey six numSix atSix tab) coll 1 (a, y') := by
+  obtain ⟨ha, H⟩ := sent0_of_step X N P c₁ k₁ q₁ Pb (fr₁ D).ft x _ S0 S0' a r₁ r₂ cols n hstep
+  have hn : n₁ (oneAt X) = 2 := by
+    have ht : ties₁ (oneAt X) 0 ((Fk X N P).start₁ x) = true := ((shape₁_iff _ _ _ _ _ _ _).1 S0).1
+    unfold ties₁ tiesA at ht
+    simp only [Bool.and_eq_true] at ht
+    exact beq_iff_eq.1 ht.1.1.1.1.1.1
+  refine on₁'_of_step X N P D c₁ k₁ decT recOf tab coll q₁ rad hC x a r₁ r₂ cols n hstep k₀ hk Z2 tieC tieS H.size t0 t1 t2 n0 n1 n2 f0 f1 f2 y₀ ?_ ?_ H.order ?_ r ?_ hcell L2'
+  · rw [hn]
+    exact shape_send0 (oneAt X) _ a.2 H S0
+  · intro q hq
+    rw [pinned_behind0] at hq
+    obtain rfl : q = 0 := List.mem_singleton.1 hq
+    exact ⟨0, (0, 0), rfl, H.place0, rfl⟩
+  · rw [ha]
+    exact T4
+  · rw [ha]
+    exact L2
+
+end
+
+end LPFD
+
+#print axioms LPFD.sent0_of_step
+#print axioms LPFD.on₁'_of_yes

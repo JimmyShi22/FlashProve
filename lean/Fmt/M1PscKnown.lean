@@ -1,0 +1,96 @@
+-- Copyright 2026 Anthropic PBC
+-- SPDX-License-Identifier: Apache-2.0
+/-
+Fmt/M1PscKnown.lean: known-answer tests for the first toy (a product test), "ZERO" and "PSC": the
+verifier's functions of Fmt/M1Psc.lean agree, value for value, with a second reading of the same
+text (the programs' description of the toy) by another writer, at tiny sizes (K = 3; a mask row of
+16 entries; field 2).
+
+Data and tests (#guard) only. Made by a program from the trace of this library's own reference in
+Python (an honest prover and a verifier, written from the text alone): nobody typed a number. ZERO
+and PSC are the toy's zero-check and its sum-check (Fmt/M1Psc.lean, the head). That head also tells
+what the running claim R, the variables X and Y, a constant that is got back and a row's c, d and
+target are.
+
+Main names:
+  `zeta`: what the reference's run drew in ZERO.
+  `msg`: what its prover sent in PSC.
+  `drw`: what was drawn in PSC.
+
+Tests:
+  every running claim R_0, .., R_(K+1) (`claims`, then the claim at the end, `pscR`);
+  every constant that is got back (`leftOut`), K in X and one in Y, which are also that prover's own
+    honest constants;
+  the three rows (`pscBlock`), entry by entry (c on 32 entries, d on 16, the target), in the order
+    in which they are batched.
+
+The tests show that two readings of one text give the same values. A slip in one of them that moves
+one of these values would show.
+Limits: a reading that both share would not show. This file's sources include no value of the
+programs. What has been compared with their own files is told in the head of Fmt/M1Psc.lean, under
+"Limits".
+
+Notation:
+  K: a natural number, the argument K of `pscFits`, `pscBlock` (Fmt/M1Psc.lean); in `Par`: the rows
+    a, b, c have 2^K entries (the head of Fmt/M1Types.lean);
+  `.two`: field 2, `Fld.two`, one of the format's two fields (`Fld`, Fmt/Rules1.lean);
+  c, d, t: the fields of `GRow` (Fmt/M1Types.lean): coefficient vectors c and d and a target t of a
+    linear equation (the head of Fmt/M1Psc.lean);
+  X, Y: the sum-check's K + 1 variables: X_j, and one further variable Y (the head of
+    Fmt/M1Psc.lean).
+
+Terms: lean/GLOSSARY.md.
+-/
+import Fmt.M1Psc
+
+set_option autoImplicit false
+
+namespace Fmt.M1.PscKnown
+
+def zeta : List E :=
+  [(6199690249767373080, 5461016174967853323, 6682938706306837120),
+    (3986674562518636108, 12407623776133776216, 13662243528006274243),
+    (11003126537215923817, 2088449410633565639, 15442224023593960632)]
+def msg : PscMsg :=
+  ⟨(5761657087426973614, 15560853571193073147, 15966443068794484313),
+    [((13241433004816208514, 16527395227258453689, 17632792556476729885),
+        (942826620996899131, 4178860504532672004, 11469449389863109280)),
+      ((10235774610817657327, 12541570878485684270, 17885321585807158650),
+        (11116153334014174716, 6979737216315772451, 8527405353049678545)),
+      ((2391963029221710536, 7909551492052124804, 2413468382584413146),
+        (6239624518585369478, 4287321807921575290, 6333947935755282516))],
+    ((4859715062843160363, 2878160859212365380, 3831591090523785316),
+      (5690861995148336413, 6979069448296261059, 13185851109540232150)),
+    ((17688155450384077996, 8002426705588030514, 6608475099868531005),
+      (2415826182105461105, 15031008726346712677, 373841732877861111))⟩
+def drw : PscDraw :=
+  ⟨(14842080079969992615, 1539954113134097197, 7632935796757518917),
+    [(8644087567729105638, 6558602784084055067, 1047269451568399080),
+      (10453927304610316979, 9341977517962223664, 973049411950698743),
+      (4740660323695751685, 11144852095266026227, 7404657990661981518)],
+    (18424076056954551733, 5886171758516301846, 16118699252379066626)⟩
+
+/-- the running claims R_0, .., R_K: after 0, 1, .., K rounds in X -/
+def claims : List E :=
+  (List.range (3 + 1)).map fun j =>
+    runX .two (pscR0 .two Fld.zeroE msg drw) (zeta.take j) msg.q drw.gamma
+
+#guard pscFits 3 zeta msg drw
+-- the running claims, and the claim at the end
+#guard claims ++ [pscR .two Fld.zeroE zeta msg drw] == [(5761657087426973614, 15560853571193073147, 15966443068794484313), (1737926438413795691, 9992121281969888944, 9966716570864180986), (6715259673796985257, 1537726331652484644, 103451863657675039), (1654972684497865074, 2400485467028344392, 15420702192435519304), (1051528360332662531, 3746469755652696740, 1234502779495341944)]
+-- the constants got back; they are that prover's honest ones
+#guard leftOut .two Fld.zeroE zeta msg drw == [(17983208621840585949, 16244486706252137871, 13963044885703965320), (14192245801475331225, 4140703484663353652, 11320126751187658985), (6537356797456402807, 16109727270525635645, 11738097943852944066), (1654972684497865074, 2400485467028344392, 15420702192435519304)]
+#guard leftOut .two Fld.zeroE zeta msg drw == [(17983208621840585949, 16244486706252137871, 13963044885703965320), (14192245801475331225, 4140703484663353652, 11320126751187658985), (6537356797456402807, 16109727270525635645, 11738097943852944066), (1654972684497865074, 2400485467028344392, 15420702192435519304)]
+-- the three rows, in the order of batching
+#guard ((pscBlock .two 3 16 zeta msg.mu msg.q msg.p msg.v drw.eps drw.gamma drw.beta).getD 0 default).c == #[(0, 0, 0), (0, 0, 0), (15169812567639024369, 4549938962865869300, 1829327233713270876), (0, 0, 0), (0, 0, 0), (0, 0, 0), (17408207354316154208, 12630463385629853071, 6100675169974557782), (0, 0, 0), (0, 0, 0), (0, 0, 0), (2197750406620248603, 10230883360029433242, 8352059008235929639), (0, 0, 0), (0, 0, 0), (0, 0, 0), (18228795300609793713, 13211974970053077115, 7570029977828035656), (0, 0, 0), (0, 0, 0), (0, 0, 0), (3302326288482070862, 16320896673419197807, 9244837635193591909), (0, 0, 0), (0, 0, 0), (0, 0, 0), (5015606098821072082, 7509698046306758032, 7194869696090646154), (0, 0, 0), (0, 0, 0), (0, 0, 0), (4497702797508025984, 5018334232732567957, 8677474886969769674), (0, 0, 0), (0, 0, 0), (0, 0, 0), (11571439453106539169, 2774832533487483563, 17184766872895016677), (0, 0, 0)]
+#guard ((pscBlock .two 3 16 zeta msg.mu msg.q msg.p msg.v drw.eps drw.gamma drw.beta).getD 0 default).d == #[(8644087567729105638, 6558602784084055067, 1047269451568399080), (15789321584062475886, 16766347630455819540, 6112243482776195888), (10453927304610316979, 9341977517962223664, 973049411950698743), (16585716030957894602, 14857463860035623894, 9410034390662834759), (4740660323695751685, 11144852095266026227, 7404657990661981518), (17753622972468556773, 4611862357802369373, 15864030644991141206), (1, 0, 0), (18424076056954551733, 5886171758516301846, 16118699252379066626), (12554471702819211390, 5017851183187500582, 2617202384361315371), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
+#guard ((pscBlock .two 3 16 zeta msg.mu msg.q msg.p msg.v drw.eps drw.gamma drw.beta).getD 0 default).t == (3358440461478199451, 12773226255660081119, 13607865738517105734)
+#guard ((pscBlock .two 3 16 zeta msg.mu msg.q msg.p msg.v drw.eps drw.gamma drw.beta).getD 1 default).c == #[(17591442765974425970, 13991904378487109730, 1975179253867081850), (0, 0, 0), (0, 0, 0), (0, 0, 0), (9546755975152278238, 502903166719077183, 16604133203174362562), (0, 0, 0), (0, 0, 0), (0, 0, 0), (8423562117740319804, 13171635800441238473, 1430348035851559610), (0, 0, 0), (0, 0, 0), (0, 0, 0), (15037811025680977267, 16528936767330301350, 9479169655274183102), (0, 0, 0), (0, 0, 0), (0, 0, 0), (9406703455007210671, 4957390708800036118, 18207889397009102814), (0, 0, 0), (0, 0, 0), (0, 0, 0), (8341402707499521106, 8099312366860721947, 17579980942242506994), (0, 0, 0), (0, 0, 0), (0, 0, 0), (11274436301792690881, 16660698536431313575, 14232802000533025288), (0, 0, 0), (0, 0, 0), (0, 0, 0), (12611605998225497669, 18320938622003123229, 12724217859121099385), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
+#guard ((pscBlock .two 3 16 zeta msg.mu msg.q msg.p msg.v drw.eps drw.gamma drw.beta).getD 1 default).d == #[(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (18424076056954551733, 5886171758516301846, 16118699252379066626), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
+#guard ((pscBlock .two 3 16 zeta msg.mu msg.q msg.p msg.v drw.eps drw.gamma drw.beta).getD 1 default).t == (17688155450384077996, 8002426705588030514, 6608475099868531005)
+#guard ((pscBlock .two 3 16 zeta msg.mu msg.q msg.p msg.v drw.eps drw.gamma drw.beta).getD 2 default).c == #[(0, 0, 0), (17591442765974425970, 13991904378487109730, 1975179253867081850), (0, 0, 0), (0, 0, 0), (0, 0, 0), (9546755975152278238, 502903166719077183, 16604133203174362562), (0, 0, 0), (0, 0, 0), (0, 0, 0), (8423562117740319804, 13171635800441238473, 1430348035851559610), (0, 0, 0), (0, 0, 0), (0, 0, 0), (15037811025680977267, 16528936767330301350, 9479169655274183102), (0, 0, 0), (0, 0, 0), (0, 0, 0), (9406703455007210671, 4957390708800036118, 18207889397009102814), (0, 0, 0), (0, 0, 0), (0, 0, 0), (8341402707499521106, 8099312366860721947, 17579980942242506994), (0, 0, 0), (0, 0, 0), (0, 0, 0), (11274436301792690881, 16660698536431313575, 14232802000533025288), (0, 0, 0), (0, 0, 0), (0, 0, 0), (12611605998225497669, 18320938622003123229, 12724217859121099385), (0, 0, 0), (0, 0, 0)]
+#guard ((pscBlock .two 3 16 zeta msg.mu msg.q msg.p msg.v drw.eps drw.gamma drw.beta).getD 2 default).d == #[(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (18424076056954551733, 5886171758516301846, 16118699252379066626), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)]
+#guard ((pscBlock .two 3 16 zeta msg.mu msg.q msg.p msg.v drw.eps drw.gamma drw.beta).getD 2 default).t == (2415826182105461105, 15031008726346712677, 373841732877861111)
+#guard (pscBlock .two 3 16 zeta msg.mu msg.q msg.p msg.v drw.eps drw.gamma drw.beta).length == 3
+
+end Fmt.M1.PscKnown

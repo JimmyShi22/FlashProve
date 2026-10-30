@@ -1,0 +1,12 @@
+newer name (Lean v4.34.0, Mathlib v4.34.0)	older name (Lean v4.29.1, Mathlib 5e932f97)
+ite_eq_left_of_eq_true	ite_cond_eq_true
+ite_eq_right_of_eq_false	ite_cond_eq_false
+dite_eq_left_of_eq_true	dite_cond_eq_true
+ite_eq_left	if_pos
+ite_eq_right	if_neg
+AlgEquiv.coe_toAlgHom	AlgEquiv.coe_algHom
+monomial_mul_monomial	monomial_mul
+finsetSum_coeff	finset_sum_coeff
+eval_finsetSum	eval_finset_sum
+finite_setOfPred_isRoot	finite_setOf_isRoot
+mem_ofPred_eq	mem_setOf_eq

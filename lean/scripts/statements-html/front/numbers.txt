@@ -1,0 +1,5 @@
+property	bound	at
+Soundness	`finalSoundnessError q` = 16 (q + 1 + 2^23) / 2^128 + (q + 2^23 + 3)^2 / 2^256, about q / 2^124 + 2^-101	q hash queries by the committer and the prover together
+Binding	`finalBindingError q`, about q / 2^124 + 2^-100	q hash queries by the committer and the prover or opener together
+Completeness	`finalCompletenessError` = 2^-40	one request that can be served and whose output tokens are the model's
+Zero knowledge	`finalZeroKnowledgeError` = 2^-154, a statistical distance	up to 688,127 replies and 2^64 hash queries
