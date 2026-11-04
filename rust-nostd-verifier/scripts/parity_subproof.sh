@@ -8,8 +8,12 @@
 #      fixture parameter file, and its output is compared with fixtures/table_vectors.txt;
 #   4. the Rust test rebuilds all four tables, recomputes the digests and replays the gate,
 #      including the four mutated digests' rejection names;
-#   5. the whole workspace builds and its tests pass;
-#   6. fp-core is scanned for `use std`, `extern crate std` and `static mut`.
+#   5. the C++ sub-proof vector tool is built and its output compared with
+#      fixtures/subproof_vectors.txt: the engine, packing, smallness planning, lookup forest, PSC
+#      row and the sumcheck slot counts;
+#   6. the Rust replay of that tool, and the transcript-driven sub-proof tests on a real chain;
+#   7. the whole workspace builds and its tests pass;
+#   8. fp-core is scanned for `use std`, `extern crate std` and `static mut`.
 set -o pipefail
 
 here=$(cd "$(dirname "$0")/.." && pwd) || exit 1
@@ -90,6 +94,41 @@ if cargo test --manifest-path "$here/Cargo.toml" -p fp-host --test table_vectors
 else
   bad "Rust table_vectors"
   tail -30 "$tmp/table_vectors.log"
+fi
+
+echo "parity_subproof: building subproof_vectors"
+if clang++ -O2 -std=c++17 -pthread -Iverifier/src -Iblocks -Iprover -DBLK_FIELD=2 \
+  -DBLK_COUNT_HASH_CALLS=1 -DSERVING_BUILD=1 -DDIGEST_WORDS=8 \
+  -DVF_SOURCE_DIGEST='"93afdaf592393a54ebd17b681d1c03295eb883f0161ff0e6ab872a3b39939595"' \
+  -o "$tmp/subproof_vectors" "$here/scripts/cpp_vectors/subproof_vectors.cpp"; then
+  if "$tmp/subproof_vectors" >"$tmp/subproof_vectors.txt"; then
+    if cmp -s "$tmp/subproof_vectors.txt" "$here/fixtures/subproof_vectors.txt"; then
+      ok "subproof_vectors: output matches fixtures/subproof_vectors.txt"
+    else
+      bad "subproof_vectors: output differs from fixtures/subproof_vectors.txt"
+      diff -u "$here/fixtures/subproof_vectors.txt" "$tmp/subproof_vectors.txt" | head -20
+    fi
+  else
+    bad "subproof_vectors: C++ run"
+  fi
+else
+  bad "subproof_vectors: C++ build"
+fi
+
+if cargo test --manifest-path "$here/Cargo.toml" -p fp-host --test subproof_vectors \
+  >"$tmp/subproof_vectors.log" 2>&1; then
+  ok "Rust subproof_vectors"
+else
+  bad "Rust subproof_vectors"
+  tail -30 "$tmp/subproof_vectors.log"
+fi
+
+if cargo test --manifest-path "$here/Cargo.toml" -p fp-host --test subproof_tests \
+  >"$tmp/subproof_tests.log" 2>&1; then
+  ok "Rust subproof_tests"
+else
+  bad "Rust subproof_tests"
+  tail -30 "$tmp/subproof_tests.log"
 fi
 
 echo "parity_subproof: cargo build --workspace"
