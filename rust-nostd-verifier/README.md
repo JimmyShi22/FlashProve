@@ -4,15 +4,20 @@ A `no_std` Rust port of the FlashProve verifier (`verifier/src/cp_verify.cpp` an
 `vf_*.h` headers). The goal is a verifier core that runs on a zkVM (RISC0/SP1) while matching the
 C++ reference byte for byte.
 
-**Status: S1 skeleton.** The workspace, the `no_std` core, the host shell, the CLI and file/header
-validation are in place. The proof system is still stubbed: every stage returns
-`Internal("not-implemented")`, the host prints `NOT CHECKED: internal-stage` and exits 5, and the
-stub path can never print `YES`.
+**Status: S2a complete.** The foundation lanes are ported and parity-checked against C++:
+Goldilocks field and MLE, BLAKE2b and the format's hash modes with both `q_V` counters, and
+`Big`/`Real`/`Bound`/`codes`/`plan`/`accounting`. Rust already reproduces the four `result-v1`
+numbers of the accepted example from a C++-dumped plan: `128.00`, `96.23`, `38`, `49`.
+
+The proof system (`blocks/iop`, `blocks/frame`) and the verifier sub-proofs are still stubbed:
+every stage returns `Internal("not-implemented")`, the host prints
+`NOT CHECKED: internal-stage` and exits 5, and the stub path can never print `YES`. S2b is next;
+S3 is the end-to-end gate.
 
 ## Layout
 
 ```
-Cargo.toml                 workspace (no third-party dependencies)
+Cargo.toml                 workspace; the only dependency is pinned libm 0.2.16
 fp-core/                   #![no_std] + extern crate alloc
   src/refusal.rs           Refusal::{Named, Internal} and Result
   src/consts.rs            DW, version word, tags, build digest, exit statuses
@@ -20,13 +25,19 @@ fp-core/                   #![no_std] + extern crate alloc
                            each with a C++ source pointer and a test-coverage note
   src/head.rs              cp_word / cp_key_head / cp_proof_head / cp_policy_word
   src/out.rs               cp_line_of / cp_reason_of / refusal line formatting
-  src/stage_state.rs       the per-stage mutable state that C++ gets from a fresh process
+  src/stage_state.rs       per-stage state, including HashCalls { f2b, blk }
+  src/field/               gl64, F/E, multilinear helpers (S2a lane A)
+  src/hash/                BLAKE2b, earlier H, modes, domains, TH (S2a lane B)
+  src/numbers/             Big/Real/Bound, setting, codes, plan, accounting (S2a lane C)
 fp-host/                   std binary `fp-host`
   src/main.rs              CLI, file reads, header checks, three-stage skeleton
   src/usage.txt            the static usage text, captured from the reference binary
-  tests/                   unit tests and the rejection-name consistency test
-fixtures/                  byte-for-byte copies of examples/accepted-proof, plus goldens
-scripts/parity.sh          S1 parity gate against the C++ reference
+  tests/                   unit tests, vector tests and the golden accounting test
+fixtures/                  byte-for-byte example files, goldens and C++ vector dumps
+scripts/parity.sh          S1 CLI/file/header parity gate
+scripts/parity_field.sh    lane A: C++ field vectors -> fixtures diff -> Rust test
+scripts/parity_hash.sh     lane B: Python/C++ vectors and counters -> Rust tests
+scripts/parity_numbers.sh  lane C: arithmetic vectors and a C++ plan/accounting dump -> Rust tests
 ```
 
 ## Build and test
@@ -127,3 +138,19 @@ as they are.
   byte for byte at exit 0, and the `accounting:` numbers (`q_V=136088`, `least-round`, …) and text
   skeleton must be recomputed by Rust and match byte for byte. The negative controls must reproduce
   `NO: proof-refused` and `NO: model-statement` with exit 1.
+
+
+## S2a lanes
+
+- **Field** (`fp-core/src/field/`): `gl64.h` arithmetic, `F`/`E` with the lazy-reduction product,
+  and the MLE helpers. 18,256 C++ vectors in `fixtures/field_vectors.txt`.
+- **Hash** (`fp-core/src/hash/`): BLAKE2b compression, the verifier's `H(num; w)`, `blocks/hash`
+  modes (`Digest`, `Tag`, `Hasher`, leaves/vertices, chain calls), `TH`, and
+  `HashCalls { f2b, blk }` for `q_V`. Vectors: RFC 7693, hashlib, 200 Python `f()` cases, 57
+  repository H/TH lines, 58 mode lines, and C++/Rust counter parity.
+- **Numbers/plan/accounting** (`fp-core/src/numbers/`): exact `Big`/`Real`/`Bound`, `Setting`,
+  `codes`, `PlanRound`/`Planned` and `account()`. 3,785 arithmetic/code vectors plus a 23,265-line
+  plan dump from `cp_with_configured()`; the Rust accounting matches all four C++ accountings
+  field by field and reproduces `128.00 / 96.23 / 38 / 49`.
+
+See `../docs/s2a-report.md` for commands, outputs and the S2b/S3 deferred items.
