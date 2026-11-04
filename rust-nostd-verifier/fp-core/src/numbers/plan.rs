@@ -5,6 +5,7 @@
 //! in S2b. A `Planned` here is built from a C++ dump or, later, by the ported planners.
 
 use alloc::collections::BTreeMap;
+use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
@@ -91,6 +92,25 @@ impl Default for PricedGroup {
     }
 }
 
+impl PricedCode {
+    /// All the fields are compared (`PricedCode::operator==`).
+    pub fn same(&self, o: &PricedCode) -> bool {
+        self.log_n == o.log_n && self.ell == o.ell && self.r == o.r
+    }
+}
+
+impl PricedGroup {
+    /// All but `said`, `rule` and `m`: what a run can be compared with
+    /// (`PricedGroup::operator==`).
+    pub fn same_run(&self, o: &PricedGroup) -> bool {
+        self.main.same(&o.main)
+            && self.mask.same(&o.mask)
+            && self.k == o.k
+            && self.h == o.h
+            && self.slots == o.slots
+    }
+}
+
 /// The committed table's distances (`TableDistances`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TableDistances {
@@ -121,6 +141,17 @@ impl Default for PricedTable {
             said: false,
             test: TableTest::Later,
         }
+    }
+}
+
+impl PricedTable {
+    /// All but `said` (`PricedTable::operator==`).
+    pub fn same_run(&self, o: &PricedTable) -> bool {
+        self.code.same(&o.code)
+            && self.v == o.v
+            && self.answers == o.answers
+            && self.distances == o.distances
+            && self.test == o.test
     }
 }
 
@@ -443,6 +474,68 @@ impl Planned {
             }
         }
         (Cause::None, String::new())
+    }
+}
+
+/// Steps through those rounds of a plan without repeats that are queries of the hash chain
+/// (`Cursor`).
+pub struct Cursor {
+    plan: Rc<Planned>,
+    at: usize,
+}
+
+impl Cursor {
+    /// Ends the process unless the plan holds and was computed over this build's field.
+    pub fn new(plan: Rc<Planned>) -> Self {
+        assert!(
+            plan.holds(),
+            "Cursor: the parameters are not admitted: {}",
+            plan.why_not()
+        );
+        let build = Setting::of_this_build();
+        assert!(
+            plan.set.circle == build.circle
+                && Big::cmp(&plan.set.p, &build.p) == Ordering::Equal
+                && plan.set.degree == build.degree,
+            "Cursor: the plan's errors were reckoned over another field than this build's"
+        );
+        Cursor { plan, at: 0 }
+    }
+
+    /// The next round that is a query of the hash chain; the process ends if its name differs.
+    /// Returns the round's index.
+    pub fn next_round(&mut self, name: &str) -> usize {
+        self.skip();
+        assert!(
+            self.at < self.plan.rounds.len(),
+            "Cursor: a round is run after the last planned one"
+        );
+        let r = &self.plan.rounds[self.at];
+        assert!(r.count == 1, "Cursor: a plan with repeats cannot be run");
+        assert!(
+            r.name == name,
+            "Cursor: the round that is run is not the next planned one"
+        );
+        let at = self.at;
+        self.at += 1;
+        at
+    }
+
+    pub fn at_end(&mut self) -> bool {
+        self.skip();
+        self.at == self.plan.rounds.len()
+    }
+
+    pub fn plan(&self) -> &Planned {
+        &self.plan
+    }
+
+    fn skip(&mut self) {
+        while self.at < self.plan.rounds.len()
+            && self.plan.rounds[self.at].kind == RoundKind::Record
+        {
+            self.at += 1;
+        }
     }
 }
 

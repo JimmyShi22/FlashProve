@@ -453,7 +453,8 @@ pub fn vertex_with_start(
 
 /// A run's value (`run_value`).
 pub fn run_value(label: u64, parameters: &Digest, random_bytes: &Digest, calls: &mut HashCalls) -> Digest {
-    node(&Tag::plain(Domain::Run, label), label, parameters, random_bytes, calls)
+    // The label is the index, not the tag's tree (blocks/hash/hash.h: `node(Domain::RUN, label, ..)`).
+    node(&Tag::plain(Domain::Run, 0), label, parameters, random_bytes, calls)
 }
 
 /// The end of both forms of `leaf()` (`leaf_end`).

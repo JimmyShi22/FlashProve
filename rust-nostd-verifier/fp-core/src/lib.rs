@@ -9,12 +9,16 @@
 
 extern crate alloc;
 
+pub mod chain;
+pub mod code;
 pub mod consts;
 pub mod field;
 pub mod hash;
 pub mod head;
+pub mod iop;
 pub mod names;
 pub mod numbers;
 pub mod out;
 pub mod refusal;
 pub mod stage_state;
+pub mod tree;

@@ -33,6 +33,10 @@ pub const fn version_word(field: u8, hash: u8) -> u32 {
     tag_of(b'H', b'8', b'0' + field, b'0' + hash)
 }
 
+/// `BLK_FIELD`, the build's field (`blocks/base.h:29-37`).
+pub const BLK_FIELD: u64 = 2;
+/// `BLK_HASH`, the build's hash (`blocks/base.h:29-37`).
+pub const BLK_HASH: u64 = 1;
 /// The only version word this build accepts (`blocks/frame/version.h:28`).
 pub const PROGRAM_VERSION_WORD: u32 = version_word(2, 1);
 /// The same word as text, for diagnostics.
