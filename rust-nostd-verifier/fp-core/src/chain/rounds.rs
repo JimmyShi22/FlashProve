@@ -970,6 +970,9 @@ impl PositionsDraw<'_, '_, '_, '_> {
     pub fn require_table(&mut self, run: &PricedTable) {
         self.r.require_table(run);
     }
+    pub fn require_codes(&mut self, run: &PricedGroup) {
+        self.r.require_codes(run);
+    }
 }
 
 /// Draws the entries of an approximate range check (`BitsDraw`).

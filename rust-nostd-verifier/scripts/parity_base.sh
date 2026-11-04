@@ -49,8 +49,14 @@ check_cpp message_vectors message_vectors.txt
 check_cpp chain_vectors chain_vectors.txt -DBLK_COUNT_HASH_CALLS=1
 check_cpp tree_code_vectors tree_code_vectors.txt
 check_cpp rounds_vectors rounds_vectors.txt
+check_cpp tensor_vectors tensor_vectors.txt
+check_cpp hp_fold_vectors hp_fold_vectors.txt
+check_cpp fold_output_vectors fold_output_vectors.txt
+check_cpp iop_core_vectors iop_core_vectors.txt
+check_cpp iop_data_vectors iop_data_vectors.txt
+check_cpp components_vectors components_vectors.txt
 
-for test in message_vectors chain_vectors tree_code_vectors rounds_vectors; do
+for test in message_vectors chain_vectors tree_code_vectors rounds_vectors tensor_vectors hp_fold_vectors fold_output_vectors iop_core_vectors iop_data_vectors components_vectors; do
   if cargo test --manifest-path "$here/Cargo.toml" -p fp-host --test "$test" >"$tmp/$test.log" 2>&1; then
     ok "Rust $test"
   else
