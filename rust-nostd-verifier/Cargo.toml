@@ -1,0 +1,5 @@
+[workspace]
+resolver = "2"
+members = ["fp-core", "fp-host"]
+
+# No third-party dependencies. `libm` is deferred to S2 and needs a TL decision.
