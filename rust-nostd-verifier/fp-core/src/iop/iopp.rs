@@ -20,12 +20,19 @@ use crate::hash::calls::HashCalls;
 use crate::iop::message::Writer;
 
 /// 2^k main rows and 2^h mask rows (`IoppStage`, iopp.h:41-45).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct IoppStage {
     pub code: CodeId,
     pub mask_code: CodeId,
     pub k: u32,
     pub h: u32,
+}
+
+impl Default for IoppStage {
+    /// The C++ defaults are NONE_ID for both code numbers (iopp.h:42-44).
+    fn default() -> Self {
+        IoppStage { code: NONE_ID, mask_code: NONE_ID, k: 0, h: 0 }
+    }
 }
 
 /// Whether the masks ride with the switch (`IoppChoice`, iopp.h:54-56).

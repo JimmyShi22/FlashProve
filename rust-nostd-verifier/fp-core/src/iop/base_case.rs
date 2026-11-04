@@ -19,9 +19,16 @@ use crate::hash::calls::HashCalls;
 use crate::numbers::round_names::{R_BASE, R_BASE_LAMBDA};
 
 /// One BASE's masking oracle (`BaseMask`, base_case.h:50-74). The verifier sets only `id`.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct BaseMask {
     id: OracleId,
+}
+
+impl Default for BaseMask {
+    /// The C++ default is NONE_ID (base_case.h:73).
+    fn default() -> Self {
+        BaseMask { id: NONE_ID }
+    }
 }
 
 impl BaseMask {

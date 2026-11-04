@@ -84,9 +84,10 @@ pub struct Tensor {
 }
 
 impl Default for Tensor {
+    /// The C++ default has `scalar = E::one()` (tensor.h:70); the port keeps it.
     fn default() -> Self {
         Tensor {
-            scalar: E::zero(),
+            scalar: E::one(),
             dense_vars: Vec::new(),
             values: None,
             first: 0,
@@ -100,10 +101,9 @@ impl Default for Tensor {
 }
 
 impl Tensor {
-    /// The all-zero factor: the default in C++ is no pairs, scalar 0 (a default `E`); callers here
-    /// use `eq`, `product` or `Tensor::one()`.
+    /// The constant tensor 0: a port helper, not a C++ constructor (C++ `Tensor()` has scalar one).
     pub fn zero() -> Self {
-        Tensor::default()
+        Tensor { scalar: E::zero(), ..Tensor::default() }
     }
     /// The constant tensor 1 (`Tensor()` with `scalar = E::one()`).
     pub fn one() -> Self {

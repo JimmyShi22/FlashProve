@@ -21,7 +21,7 @@ use crate::numbers::round_names::{R_FOLD_EPSILON, R_FOLD_ROUND};
 
 /// The public parameters of one FOLD (`FoldShape`, fold.h:40-64). The three prover-only options
 /// stay for their public meaning and are ignored by the verifier's path.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FoldShape {
     pub code: CodeId,
     pub mask_code: CodeId,
@@ -30,6 +30,21 @@ pub struct FoldShape {
     pub keep_folded_coefficients: bool,
     pub folded_coefficients_alone: bool,
     pub target_from_the_rounds: bool,
+}
+
+impl Default for FoldShape {
+    /// The C++ defaults are NONE_ID for both code numbers (fold.h:40-42).
+    fn default() -> Self {
+        FoldShape {
+            code: NONE_ID,
+            mask_code: NONE_ID,
+            layout: GroupLayout::default(),
+            mask_leaf_class: 0,
+            keep_folded_coefficients: false,
+            folded_coefficients_alone: false,
+            target_from_the_rounds: false,
+        }
+    }
 }
 
 /// The fresh mask of one FOLD (`FoldMask`, fold.h:129-149). On the verifier's side only the id

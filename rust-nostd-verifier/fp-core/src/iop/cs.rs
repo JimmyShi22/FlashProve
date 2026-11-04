@@ -11,7 +11,7 @@ use alloc::vec::Vec;
 use super::bat;
 use super::context::{VerifierContext, OracleNotice};
 use super::relation::{
-    CodeId, GroupId, GroupLayout, OracleId, OracleShape, Part, Row, RowKind, Statement,
+    CodeId, GroupId, GroupLayout, OracleId, OracleShape, Part, Row, RowKind, Statement, NONE_ID,
 };
 use super::send::{send_verify, AnswersRound};
 use super::send_pad::{send_pad, PadPlace};
@@ -559,12 +559,19 @@ pub fn switch_rows(
 }
 
 /// What a switch returns (`Switched`, cs.h:484-489).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Switched {
     pub g: OracleId,
     pub kept: Vec<OracleId>,
     pub with: Vec<OracleId>,
     pub at: PositionList,
+}
+
+impl Default for Switched {
+    /// The C++ default is NONE_ID (cs.h:485).
+    fn default() -> Self {
+        Switched { g: NONE_ID, kept: Vec::new(), with: Vec::new(), at: PositionList::default() }
+    }
 }
 
 /// Splits the oracle messages of the switch's prover message (`switch_sort`, cs.h:493-497).
