@@ -1009,4 +1009,10 @@ impl BitsDraw<'_, '_, '_, '_> {
         }
         t
     }
+
+    /// The round draws a matrix of `run` combinations (`require_combinations`). C++'s
+    /// `chainTrits` asks before an entry is drawn.
+    pub fn require_combinations(&mut self, run: u64) {
+        self.r.require_combinations(run);
+    }
 }

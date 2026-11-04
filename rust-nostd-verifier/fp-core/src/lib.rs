@@ -23,3 +23,4 @@ pub mod out;
 pub mod refusal;
 pub mod stage_state;
 pub mod tree;
+pub mod verifier;

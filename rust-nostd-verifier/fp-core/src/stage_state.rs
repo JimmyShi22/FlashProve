@@ -74,6 +74,11 @@ pub struct StageState {
     pub lidb: i32,
     /// `NMINH` (`vf_common.h:535`).
     pub nminh: i32,
+    /// `POW`, `POWS`, `POWC` (`vf_common.h:537`): bits of work of a request's own rounds, of a
+    /// batch's shared, and of the committer's; from the frame line `work` (`cp_verify.cpp:981`).
+    pub pow: i32,
+    pub pows: i32,
+    pub powc: i32,
     /// `stageWorkNote` (`vf_common.h:747`).
     pub stage_work_note: WorkNote,
     /// `acctNote` (`vf_common.h:759`).
@@ -113,6 +118,9 @@ impl Default for StageState {
             tau: TAU_DEFAULT,
             lidb: LIDB_SEALED,
             nminh: 0,
+            pow: 0,
+            pows: 0,
+            powc: 0,
             stage_work_note: WorkNote::default(),
             acct_note: AccountingStub::default(),
             residual_stream_limbs: RESIDUAL_STREAM_LIMBS_DEFAULT,
