@@ -15,7 +15,7 @@
 4. **本机可以跑 C++ 原版**：`verifier/build.sh` 依赖 GNU `stat -c`/`mv -fT`/g++ 13，不能在 macOS 直接跑；但用 Apple clang 15 直接编译 `cp_verify.cpp` 成功。官方示例输出 `YES`，`result-v1` 与 README 完全一致，`build=93afdaf592393a54ebd17b681d1c03295eb883f0161ff0e6ab872a3b39939595`。两个负面控制也已在原版上实测。
 5. **两个对齐要点**：
    - `build=` 是 `build.sh` 对源码列表算的 SHA-256，本仓库当前值为 `93afdaf5…9595`（已用 `build.sh` 同款管道复核）。Rust 侧应把它作为编译期常量（或 build script 复算），否则 `result-v1` 不可能逐字段一致。
-   - `q_V`（verifier 自身 hash 调用数）**不进入 `result-v1` 任何字段**，只出现在人类可读的 `accounting:` 行。`least-round` 等字段来自 `blk::account()` 的 plan 计算。PM 备忘中“q_V 用于对齐 result-v1”这一点需要修正。本示例实测 `q_V = 136,088`。
+   - `q_V`（verifier 自身 hash 调用数）**不进入 `result-v1` 任何字段**，只出现在 `accounting:` 行。`least-round` 等字段来自 `blk::account()` 的 plan 计算。PM 备忘中“q_V 用于对齐 result-v1”这一点需要修正。本示例实测 `q_V = 136,088`。S3 P0 仍要求 `accounting:` 的数字与文本骨架逐字节一致（见 §7、A2）。
 
 ---
 
@@ -165,9 +165,9 @@ main()
 |---|---:|---|---|---|---|---|---|
 | `cp_verify.cpp` | 3433 | L | `main`、命令行、三 stage、文件读取、fork/pipe、输出末尾四行；也含 `runStage()` 验证主体 | fork/pipe/wait/prctl/fcntl/stat/fopen/printf/exit/thr/time | 否 / 是* | `frame/check*`、`configure`、`parameters`、`heads`、`prints`、`req_frame`、`wf_units` | 拆成 host 外壳 + 纯 `run_stage` 两半；`runStage` 是移植核心 |
 | `vf_common.h` | 978 | L | `refuse`、`parFor`、文件读取、版本/阈值/status、`Served` 策略、`lastLine`、`Ex` 域运算、`TH`、`Tr` | printf/exit/IO/thr/time | 是* | `field/field`、`hash/tweak`、`frame/version`、`numbers/accounting`（经 `vf_accounting_record`） | 按职责再拆：`field`/`transcript`/`output`/`host_io` |
-| `vf_input_files.h` | 53 | S | 读 configuration、校验 key/proof 头 | 无（调用 refuse） | 是 | `frame/heads` | 纯字节解析 |
+| `vf_input_files.h` | 53 | S | 读 configuration、校验 key/proof 头 | IO（`lstat`/`needBytes`，`cpConfRead()`） | 是* | `frame/heads` | `cpConfRead()`（:36-47）属 host；`cpWord`/`cpKeyHead`/`cpProofHead`（:19-53）是纯函数，进 core |
 | `cp_configured.h` | 46 | S | 供 `cp_commit`/`cp_prove` 复用 `blk::Configured` 的链接入口 | 无 | 否（host 接口） | `frame/configure` | **不移植**（仅 host 侧保留或删除） |
-| `vf_rejection_names.txt` | 304 | M | 拒绝名分类清单（数据，不入编译） | 无 | n/a | 无 | 转为 Rust 常量/测试表；它参与 `build=` |
+| `vf_rejection_names.txt` | 304 | M | 拒绝名分类清单（数据，不入编译） | 无 | n/a | 无 | 转为 Rust 常量/测试表；每一条加 C++ 源出处注释，并逐条注明 `verifier/tests` 覆盖情况（`commitment_id_test.py` / `what_a_yes_covers_test.py` / `known_answers/`）；它参与 `build=` |
 | `vf_digest_words.h` | 13 | S | `DIGEST_WORDS=8` 常量 | 无 | 是 | 无 | 常量 |
 | `vf_widths_and_bounds.h` | 40 | S | `u32/u64`、哈希宽度、权重宽度/界 | 无 | 是 | 无 | 常量 |
 | `vf_accounting_record.h` | 153 | S | stage 的 accounting 以文本行传给父进程，再解析回来 | snprintf/sstream | 是* | `numbers/accounting` | Rust 同进程可改为结构化传递；若保留文本输出需 `core::fmt` |
@@ -220,7 +220,7 @@ main()
 |---|---|---|---|---|
 | `blocks/base.h` | 1 / 131 | 整数类型、`BLK_HD`、`BLK_REQUIRE` 守卫 | `abort()`、`fprintf(stderr)`、`thread_local` | 去外壳：守卫→`Result`/panic 策略 |
 | `blocks/fence.h` | 1 / 57 | 测试开关防误编译 | 编译期宏 | host/build 侧保留，不进 core |
-| `blocks/hash/` | 4 / 1,026 | BLAKE2b 压缩、BLAKE2b 模式、域分离、调用计数 | `tweak.h` 用 `std::atomic`；其余纯 | 计数改普通 u64；hash 直接移植 |
+| `blocks/hash/` | 4 / 1,026 | BLAKE2b 压缩、BLAKE2b 模式、域分离 tweak | `tweak.h` 是域分离 tweak（`Tweak`），不是计数；hash 调用计数分两处：`blk::hash_calls_made`（`BLK_COUNT_HASH_CALLS` 时，`tweak.h`）+ `f2b` 计数（`vf_earlier_hash_f.h`） | 域分离直接移植；两处计数改单线程普通 u64；hash 直接移植 |
 | `blocks/field/` | 3 / 475 | Goldilocks F、三次扩域 E、MLE | 纯计算 | 直接移植 |
 | `blocks/chain/` | 5 / 1,945 | Fiat-Shamir hash chain、`VerifierRounds` 通道、session | `rounds.h` 有 `fprintf(stderr)` 诊断；`closed.h` cp_verify 不调用 | 诊断改回调；`closed.h` 不移植 |
 | `blocks/code/` | 3 / 399 | Reed–Solomon 码、coset、short position | `code.h` 用 `std::mutex` 做 transform-table 缓存 | 单线程改为预计算/上下文缓存 |
@@ -349,9 +349,12 @@ types/constants ──> field(F,E) ──┐
 | `dw` | `DW=8` | 常量 |
 | `build` | `VF_SOURCE_DIGEST` | 常量 `93afdaf592393a54ebd17b681d1c03295eb883f0161ff0e6ab872a3b39939595` |
 
-注意：
+注意（S3 验收口径，TL review 修正）：
 
-- `q_V` 只进入 `accounting:` 人类可读行，**不进入 `result-v1`**；硬验收不要求逐行复刻 `accounting:` 文本。
+- `q_V` 只进入 `accounting:` 行，**不进入 `result-v1`**。但 **S3 P0 要求**：
+  1. 末尾四行（`commitment:` / `proof of work:` / `result-v1` / `YES`）逐字节一致，exit 0；
+  2. `accounting:` 行的数字（`q_V=136088`、`least-round` 等）必须由 Rust 复算且逐字节一致（`q_V` 是 zkVM cycle 估算依据，G6 引用它）；
+  3. `accounting:` 文本骨架逐字节一致。
 - `least-round` 的两位小数来自 `Real::log2()`（内部用 `std::log2`）与 `cut2()`（`floor(100x)/100`）。Rust 需要保证误差 < 0.005；示例的 `128.00`、`96.23` 可作为门。
 - `above-clip()` 是整数公式，不涉及浮点。
 
