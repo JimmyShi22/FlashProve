@@ -173,5 +173,7 @@ fn stage_state_defaults_match_the_cpp_globals() {
     assert!(!s.acct_note.formed);
     assert_eq!(s.stated_target.at, 0);
     assert_eq!(s.stated_target.hb, 0);
+    assert_eq!(s.hash_calls.f2b, 0);
+    assert_eq!(s.hash_calls.blk, 0);
     assert_eq!(s, StageState::default());
 }

@@ -11,6 +11,7 @@ extern crate alloc;
 
 pub mod consts;
 pub mod field;
+pub mod hash;
 pub mod head;
 pub mod names;
 pub mod out;

@@ -11,6 +11,7 @@
 
 use alloc::string::String;
 
+use crate::hash::calls::HashCalls;
 use crate::consts::{
     GATE_TABLE_INPUT_FRACTION_BITS_DEFAULT, GCL_DEFAULT, INNER_THREADS_DEFAULT, LIDB_SEALED,
     RESIDUAL_STREAM_LIMBS_DEFAULT, RCL_DEFAULT, SMAXTOP, TAU_DEFAULT,
@@ -101,6 +102,9 @@ pub struct StageState {
     pub run_version_word_fixed: bool,
     /// `stageShapesMade` (`cp_verify.cpp:1213`).
     pub stage_shapes_made: Option<ShapesId>,
+    /// The two hash-call counters (`vf_earlier_hash_f.h:57-75`, `blocks/hash/tweak.h:64-70`).
+    /// A stage starts them at zero (`cp_verify.cpp:2698-2700`).
+    pub hash_calls: HashCalls,
 }
 
 impl Default for StageState {
@@ -123,6 +127,7 @@ impl Default for StageState {
             run_version_word: 0,
             run_version_word_fixed: false,
             stage_shapes_made: None,
+            hash_calls: HashCalls::new(),
         }
     }
 }
