@@ -1,4 +1,9 @@
 //! The protocol blocks over the hash chain (`blocks/iop/`).
+//!
+//! Parameter names such as `S`, `V`, `T`, `G` and `L` keep their C++ spellings so that a reader
+//! can follow the source beside this port; `non_snake_case` is allowed for that reason.
+
+#![allow(non_snake_case)]
 
 pub mod bat;
 pub mod batt;

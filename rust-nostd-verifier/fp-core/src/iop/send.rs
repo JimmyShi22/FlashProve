@@ -7,13 +7,12 @@
 //! rows in the statement. `PadPlace` and the sizes live in `send_pad.rs`.
 
 use alloc::format;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use super::context::{receive_oracles, OracleNotice, VerifierContext};
 use super::mask::{SampleReceipt, SendAccess};
 use super::relation::{
-    Codes, OracleId, OracleShape, Part, Row, RowKind, Statement,
+    OracleId, Part, Row, RowKind, Statement,
 };
 use super::send_pad::{sample_cube, send_pad, SampleCube};
 use crate::chain::rounds::{SampleSeed, VerifierRounds};

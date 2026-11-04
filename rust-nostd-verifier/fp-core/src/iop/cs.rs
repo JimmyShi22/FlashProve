@@ -11,15 +11,14 @@ use alloc::vec::Vec;
 use super::bat;
 use super::context::{VerifierContext, OracleNotice};
 use super::relation::{
-    CodeId, GroupId, GroupLayout, KeptForm, OracleId, OracleShape, Part, Row, RowKind, Statement, NONE_ID,
+    CodeId, GroupId, GroupLayout, OracleId, OracleShape, Part, Row, RowKind, Statement,
 };
 use super::send::{send_verify, AnswersRound};
 use super::send_pad::{send_pad, PadPlace};
 use super::single_rows::{group_as_run, single_rows_oracles, single_rows_read, SingleRows};
 use super::tensor::{Form, Tensor};
-use crate::chain::rounds::VerifierRounds;
 use crate::code::code::{
-    generator_at, generator_row, mask_position, Code,
+    generator_at, generator_row, mask_position,
 };
 use crate::field::ext::{F, E};
 use crate::hash::calls::HashCalls;
@@ -489,7 +488,7 @@ pub fn switch_rows(
     }
     for x in at.draws() {
         let symbols = &y[at.index_of(*x) * input.rows()..];
-        let mut finish = |gen: Row, row: usize, rows: &mut Vec<Row>| {
+        let finish = |gen: Row, row: usize, rows: &mut Vec<Row>| {
             let mut gen = gen;
             gen.name = String::from("generator row");
             gen.kind = RowKind::Generator;

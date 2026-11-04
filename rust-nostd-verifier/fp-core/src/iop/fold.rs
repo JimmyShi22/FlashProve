@@ -8,11 +8,11 @@ use super::context::{receive_oracles, VerifierContext};
 use super::fold_algebra::{fold_mask_columns, fold_mask_weights};
 use super::fold_rounds::{fold_mask_form, fold_kept_factor, FoldVerifierRounds};
 use super::relation::{
-    CodeId, GroupLayout, GroupRow, KeptForm, OracleId, OracleShape, Statement, NONE_ID,
+    CodeId, GroupLayout, GroupRow, OracleId, OracleShape, Statement, NONE_ID,
 };
 use super::single_rows::{group_as_run, SingleRows};
 use crate::chain::rounds::VerifierRounds;
-use crate::code::code::{mask_fits, Code};
+use crate::code::code::mask_fits;
 use crate::field::ext::E;
 use crate::hash::calls::HashCalls;
 use crate::numbers::codes::ceil_log2;
@@ -290,7 +290,7 @@ pub fn fold_start_verify(
     S: &FoldShape,
     mut mask: FoldMask,
     start: &mut Option<FoldStart>,
-    calls: &mut HashCalls,
+    _calls: &mut HashCalls,
 ) -> bool {
     fold_shape_check(&V.st, S);
     if !mask.sent() {
