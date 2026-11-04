@@ -21,3 +21,6 @@ __pycache__/
 
 # Claude Code local state (OMC); not part of the repository.
 /.omc/
+
+# Any nested Claude Code state directory.
+.omc/
