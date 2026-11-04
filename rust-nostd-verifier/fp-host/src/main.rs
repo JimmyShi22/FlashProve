@@ -16,6 +16,7 @@ use std::os::raw::c_char;
 use std::process::exit;
 
 use fp_core::consts::{BAR, DIGEST_HALF_BITS, HEXW};
+use fp_core::frame::parameters::pol_word_u64;
 use fp_core::head::{cp_key_head, cp_policy_word, cp_proof_head};
 use fp_core::out::{
     cp_not_checked_lines, input_unreadable_line, no_line, role_name,
@@ -174,17 +175,19 @@ fn cp_main(args: &[String]) -> i32 {
     if leaf_part {
         let _entry_b = need_bytes(&at[2], "entry");
     } else if !key_part {
-        // `cpLengthHeld()` uses the parameter file's `lt` when present. S1 reads `lt` with a
-        // simple line search; the strict parameter parser arrives in S2.
+        // `cpLengthHeld()` uses the parameter file's `lt` when present. Like C++'s polWord(), the
+        // strict parser strips the frame first.
         if let Some(lt) = pol_word_u64(&conf.pol, "lt") {
             if lt <= 20 {
                 cp_length_held(&at[2], (1u64 << lt) + 2);
             }
         }
         cp_length_held(&at[3], 1);
-        let (_request, _odd_request) = must_read_words(&at[2], "request");
-        let (_y, _odd_y) = must_read_words(&at[3], "y");
-        // cpPolicyHeld() needs the strict parameter parser and the request's words; S2.
+        let (request, odd_request) = must_read_words(&at[2], "request");
+        let (_y, odd_y) = must_read_words(&at[3], "y");
+        if !odd_request && !odd_y {
+            cp_policy_held(&policy, &conf.pol, &request);
+        }
         let proof_b = need_bytes(&at[4], "proof");
         let k = match cp_proof_head(&proof_b, pol_ver) {
             Ok(k) => k,
@@ -243,13 +246,119 @@ fn run_stage_stub(_stage: &str) -> fp_core::refusal::Result<()> {
     Err(Refusal::internal("not-implemented"))
 }
 
-/// `cpPlanMain()` (`cp_verify.cpp:3118+`). S1 parses nothing beyond the subcommand's presence
-/// and checks nothing; it must never print YES.
+/// A `-plan request` option's value (`cpPlanMain`'s `value` lambda, cp_verify.cpp:3173-3178): the
+/// option may not come twice, and its value must exist.
+fn plan_take<'a>(args: &'a [String], into: &mut Option<&'a str>, i: &mut usize) -> bool {
+    if into.is_some() || *i + 1 >= args.len() {
+        return false;
+    }
+    *i += 1;
+    *into = Some(args[*i].as_str());
+    true
+}
+
+/// `cpPlanMain()` (`cp_verify.cpp:3120-3218`): the same usage, file reads and rejections as C++.
+/// Where C++ would run a stage and print a plan (exit 4), the port still ends NOT CHECKED: the
+/// planners and `configure` are not ported yet, and the stub must never print YES.
 fn plan_main(args: &[String]) -> i32 {
     if args.len() < 3 {
         usage("-plan wants id, request, accounting or arrays");
     }
-    let how = "-plan is not implemented in S1";
+    let what = args[2].as_str();
+    if what == "id" {
+        if args.len() != 5 {
+            usage("-plan id wants exactly <config folder> <key.bin>");
+        }
+        let _conf = cp_conf_read(&args[3]);
+        let _key = need_bytes(&args[4], "key");
+        return plan_stub();
+    }
+    if what == "accounting" || what == "arrays" {
+        if args.len() != 5 || decimal(&args[4], 1_000_000).is_none() {
+            usage(&format!(
+                "-plan accounting and -plan arrays want exactly <config folder> <asked>; {}",
+                ASKED_FORM
+            ));
+        }
+        let conf = cp_conf_read(&args[3]);
+        // A made-up request: T tokens 0, with r = 0 and e = T. If `lt` is missing or above 20 the
+        // request stays empty; the stage rejects such a parameter file.
+        let _request = match pol_word_u64(&conf.pol, "lt") {
+            Some(lt) if lt <= 20 => {
+                let mut r = vec![0u32; (1usize << lt) + 2];
+                let t = 1u32 << lt;
+                *r.last_mut().unwrap() = t;
+                r
+            }
+            _ => Vec::new(),
+        };
+        let _y = vec![0u32];
+        return plan_stub();
+    }
+    if what != "request" {
+        usage("-plan wants id, request, accounting or arrays");
+    }
+    if args.len() < 6 || decimal(&args[5], 1_000_000).is_none() {
+        usage(&format!(
+            "-plan request wants <policy.txt> <KL.bin> <asked>; {}",
+            ASKED_FORM
+        ));
+    }
+    let mut layout_path: Option<&str> = None;
+    let mut prompt_path: Option<&str> = None;
+    let mut reply_path: Option<&str> = None;
+    let mut j_arg: Option<&str> = None;
+    let mut i = 6usize;
+    while i < args.len() {
+        let a = args[i].as_str();
+        let mut ok = true;
+        if a == "-layout" {
+            ok = plan_take(args, &mut layout_path, &mut i);
+        } else if a == "-prompt" {
+            ok = plan_take(args, &mut prompt_path, &mut i);
+        } else if a == "-reply" {
+            ok = plan_take(args, &mut reply_path, &mut i);
+        } else if a == "-j" {
+            ok = plan_take(args, &mut j_arg, &mut i);
+        } else if a == "-shapes" || a == "-fields" || a == "-arrays" || a == "-q" {
+            // Flags may repeat.
+        } else {
+            ok = false;
+        }
+        if !ok {
+            usage(&format!(
+                "argument {} is not an option of -plan request, comes a second time, or lacks its value",
+                i
+            ));
+        }
+        i += 1;
+    }
+    let mut threads: u32 = 1;
+    if let Some(j) = j_arg {
+        match decimal(j, 256) {
+            Some(v) => threads = v,
+            None => usage(THREADS_FORM),
+        }
+    }
+    if threads < 1 || prompt_path.is_none() || reply_path.is_none() {
+        usage(&format!("-plan request wants -prompt and -reply; {}", THREADS_FORM));
+    }
+    let _pol = need_bytes(&args[3], "policy");
+    let (_kl, odd) = must_read_words(&args[4], "KL");
+    if odd {
+        end_with_refusal(Refusal::named("KL-length"), "");
+    }
+    if let Some(l) = layout_path {
+        let _ = need_bytes(l, "layout");
+    }
+    let _request = must_read_words(prompt_path.unwrap(), "request");
+    let _y = must_read_words(reply_path.unwrap(), "y");
+    plan_stub()
+}
+
+/// The safe ending where a planning stage would print its plan.
+fn plan_stub() -> i32 {
+    let how = "-plan is not implemented in S2b-4 yet";
     print!("{}", cp_not_checked_lines(how, "internal-stage"));
     flush_stdout();
     5
@@ -369,6 +478,75 @@ fn policy_empty(n: u64, c: u64, theta: u64, cap: u64, sh: u64) -> u8 {
     } else {
         0
     }
+}
+
+/// `acceptancePolicyIsExactMatch()` (`vf_common.h:615-617`).
+fn acceptance_policy_is_exact_match(c: u64, theta: u64, cap: u64, sh: u64, st: u64) -> bool {
+    sh < 63 && c == theta && theta == (1u64 << sh) && cap == 0 && st + 4 == sh
+}
+
+/// `policyKind()` (`vf_common.h:623-627`).
+fn policy_kind(c: u64, theta: u64, cap: u64, s: u64, sh: u64, st: u64) -> &'static str {
+    if acceptance_policy_is_exact_match(c, theta, cap, sh, st) {
+        "exact-match"
+    } else if st + 4 == sh {
+        "clipped-gap"
+    } else if st == s {
+        "log-probability"
+    } else {
+        "another-table"
+    }
+}
+
+/// `PolicyNamed::is()` (`vf_common.h:674-681`).
+fn policy_is(p: &PolicyNamed, c: u64, theta: u64, cap: u64, s: u64, sh: u64, st: u64) -> bool {
+    p.kind == policy_kind(c, theta, cap, s, sh, st)
+        && p.c == c
+        && p.theta == theta
+        && p.cap == cap
+        && p.s == s
+        && p.sh == sh
+}
+
+/// `cpPolicyHeld()` (`cp_verify.cpp:3254-3273`): compares the caller's policy (or `exact-match`)
+/// with the parameter file and the request. A missing or malformed line returns silently; a stage
+/// rejects such a file later.
+fn cp_policy_held(p: &PolicyNamed, pol: &[u8], request: &[u32]) {
+    let (Some(c), Some(theta), Some(cap), Some(s), Some(sh), Some(st)) = (
+        pol_word_u64(pol, "C"),
+        pol_word_u64(pol, "theta"),
+        pol_word_u64(pol, "cap"),
+        pol_word_u64(pol, "s"),
+        pol_word_u64(pol, "sh"),
+        pol_word_u64(pol, "sT"),
+    ) else {
+        return;
+    };
+    if st + 4 != sh {
+        policy_refused(&format!(
+            "the parameter file sets the kind of policy {}; this program takes exact-match and clipped-gap",
+            policy_kind(c, theta, cap, s, sh, st)
+        ));
+    }
+    if p.given && !policy_is(p, c, theta, cap, s, sh, st) {
+        policy_refused("the option -policy names another kind of policy or another C, theta, cap, s or sh than the parameter file sets");
+    }
+    let Some(lt) = pol_word_u64(pol, "lt") else { return };
+    if lt > 20 || request.len() as u64 != (1u64 << lt) + 2 {
+        return;
+    }
+    let t = 1u64 << lt;
+    let r = request[t as usize] as u64;
+    let e = request[t as usize + 1] as u64;
+    let last = core::cmp::min(e, t - 1);
+    if r >= e || e > t {
+        return;
+    }
+    let n = if r < last { last - r } else { 0 };
+    if !p.given && n != 0 && !acceptance_policy_is_exact_match(c, theta, cap, sh, st) {
+        policy_refused("the request covers more than the output token, the parameter file sets another policy than exact-match, and the call has no -policy");
+    }
+    policy_says(p, n, t);
 }
 
 /// `cpPolicySays()` (`cp_verify.cpp:3241-3252`).
@@ -527,31 +705,5 @@ fn cp_length_held(path: &str, words: u64) {
     end_with_refusal(Refusal::named(name), "")
 }
 
-/// `polWord()` (`cp_verify.cpp:281-305`), S1 simplification: a line search over the whole file.
-///
-/// The strict parser (`blk::read_parameters`) strips the frame first. For a valid parameter file
-/// the named line is unique and appears after the frame, so the value is the same. S2 replaces
-/// this with the strict parser.
-fn pol_word_u64(pol: &[u8], name: &str) -> Option<u64> {
-    let name = name.as_bytes();
-    for line in pol.split(|&b| b == b'\n') {
-        if line.len() > name.len() + 1
-            && line.starts_with(name)
-            && line[name.len()] == b' '
-        {
-            let v = &line[name.len() + 1..];
-            if v.len() > 10 {
-                return None;
-            }
-            let mut x = 0u64;
-            for &c in v {
-                if !c.is_ascii_digit() {
-                    return None;
-                }
-                x = 10 * x + (c - b'0') as u64;
-            }
-            return Some(x);
-        }
-    }
-    None
-}
+// `polWord()` is `fp_core::frame::parameters::pol_word_u64`: the strict parser strips the frame,
+// then the named line is read from `Parameters::rest`.

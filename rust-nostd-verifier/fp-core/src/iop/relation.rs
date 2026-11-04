@@ -39,6 +39,7 @@ pub struct Codes {
     pub mask: Vec<Code>,
 }
 
+
 /// What is public about an oracle message before it is sent (`OracleShape`, relation.h:65-73).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OracleShape {

@@ -24,6 +24,8 @@ pub const fn tag_of(a: u8, b: u8, c: u8, d: u8) -> u32 {
 
 /// `CPIK` (`blocks/frame/heads.h:31`).
 pub const TAG_KEY: u32 = tag_of(b'C', b'P', b'I', b'K');
+/// `CPEN` (`blocks/frame/heads.h:31`).
+pub const TAG_ENTRY: u32 = tag_of(b'C', b'P', b'E', b'N');
 /// `CPPF` (`blocks/frame/heads.h:31`).
 pub const TAG_PROOF: u32 = tag_of(b'C', b'P', b'P', b'F');
 

@@ -276,8 +276,9 @@ impl<'a, 'd, 's> VerifierRounds<'a, 'd, 's> {
         self.why.is_none() && self.r.ok() && !self.follows_a_refusal()
     }
 
-    /// The first reason for a rejection (`why`).
-    pub fn why(&self) -> Option<&str> {
+    /// The first reason for a rejection (`why`). Every text that a channel records is a static
+    /// string, so callers may keep the reason after the channel is dropped.
+    pub fn why(&self) -> Option<&'static str> {
         if let Some(w) = self.why {
             Some(w)
         } else if !self.r.ok() {

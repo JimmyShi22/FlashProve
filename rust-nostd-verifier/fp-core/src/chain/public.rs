@@ -73,6 +73,16 @@ impl PublicBytes for Vec<u8> {
         w.put_bytes(self);
     }
 }
+/// A list of 64-bit words: its length, then each word (`public_bytes`'s vector form,
+/// `blocks/chain/public.h:64-67`; the byte vector above is the non-template overload).
+impl PublicBytes for Vec<u64> {
+    fn public_bytes(&self, w: &mut Writer) {
+        w.put_u64(self.len() as u64);
+        for x in self {
+            w.put_u64(*x);
+        }
+    }
+}
 impl<A: PublicBytes, B: PublicBytes> PublicBytes for (A, B) {
     fn public_bytes(&self, w: &mut Writer) {
         self.0.public_bytes(w);

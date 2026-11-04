@@ -3,6 +3,7 @@
 //! Ported from `blocks/numbers/{real,setting,codes,plan,accounting}.h`.
 
 pub mod accounting;
+pub mod blocks;
 pub mod codes;
 pub mod plan;
 pub mod real;

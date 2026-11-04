@@ -25,6 +25,19 @@ pub struct CodeSize {
     pub over_e: bool,
 }
 
+impl Default for CodeSize {
+    /// The members' default member initializers (`CodeSize`, codes.h:47-52).
+    fn default() -> Self {
+        CodeSize {
+            name: String::new(),
+            log_n: 0,
+            ell: 0,
+            r: 0,
+            over_e: false,
+        }
+    }
+}
+
 impl CodeSize {
     pub fn n(&self) -> u64 {
         1u64 << self.log_n

@@ -19,3 +19,9 @@ missing_request	rust-nostd-verifier/fixtures/config	rust-nostd-verifier/fixtures
 missing_y	rust-nostd-verifier/fixtures/config	rust-nostd-verifier/fixtures/ivk	rust-nostd-verifier/fixtures/example.req	rust-nostd-verifier/fixtures/no-such.y	rust-nostd-verifier/fixtures/example.proof	-id	79a5a2bc7a469b40df73dedf40abeb740671e8ae8077738bd3743897aeb22183
 missing_entry_part	-leaf	rust-nostd-verifier/fixtures/config	rust-nostd-verifier/fixtures/ivk/key.bin	rust-nostd-verifier/fixtures/no-such-entry	-id	79a5a2bc7a469b40df73dedf40abeb740671e8ae8077738bd3743897aeb22183
 plan_no_sub	-plan
+plan_id_argc	-plan	id
+plan_accounting_asked	-plan	accounting	x	1000001
+plan_request_short	-plan	request
+plan_request_no_prompt	-plan	request	a	b	128
+plan_request_bad_option	-plan	request	a	b	128	-bogus
+plan_bogus	-plan	bogus

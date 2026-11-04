@@ -13,6 +13,7 @@ pub mod chain;
 pub mod code;
 pub mod consts;
 pub mod field;
+pub mod frame;
 pub mod hash;
 pub mod head;
 pub mod iop;

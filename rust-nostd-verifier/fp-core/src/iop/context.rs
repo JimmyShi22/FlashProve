@@ -18,7 +18,7 @@ use crate::tree::opening::{receive_opening, Opening, OracleTreeShape};
 use crate::tree::positions::PositionList;
 
 /// The public half of an oracle draft (`OracleNotice`, context.h:54-57).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct OracleNotice {
     pub shape: OracleShape,
     pub leaf_class: u32,
@@ -491,3 +491,38 @@ pub fn read_opened(
     true
 }
 
+
+/// The sizes of the trees that hold some oracle messages (`tree_sizes`, context.h:150-165).
+/// `last` is the caller's `OneList` counter: a tree with a message that has no answers may be read
+/// at one list of positions only.
+pub fn tree_sizes(
+    codes: &Codes,
+    sent: &[OracleNotice],
+    last: &mut u64,
+) -> alloc::vec::Vec<crate::numbers::blocks::TreeSize> {
+    use crate::numbers::blocks::TreeSize;
+    let lay = lay_trees(codes, sent, 0);
+    let mut sizes = alloc::vec::Vec::new();
+    for (i, t) in lay.shapes.iter().enumerate() {
+        let mut z = TreeSize::default();
+        for (o, n) in sent.iter().enumerate() {
+            if lay.tree[o] as usize == i {
+                if z.name.is_empty() {
+                    z.name.push_str("tree of ");
+                } else {
+                    z.name.push_str("; ");
+                }
+                z.name.push_str(&n.shape.name);
+            }
+        }
+        z.log_n = t.log_n;
+        z.leaf_bytes = (t.main_width() + t.mask_width()) as u64 * 8; // F_BYTES
+        for (o, n) in sent.iter().enumerate() {
+            if lay.tree[o] as usize == i && n.shape.answers == 0 {
+                z.one_list.mark(true, last);
+            }
+        }
+        sizes.push(z);
+    }
+    sizes
+}

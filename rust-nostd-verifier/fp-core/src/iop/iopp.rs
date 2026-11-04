@@ -123,6 +123,66 @@ pub fn iopp_fault(codes: &Codes, st: &[IoppStage], answers: u32, stage: &mut usi
 }
 
 /// The shape of a stage's FOLD (`iopp_fold_shape`, iopp.h:154-159).
+/// Turns solved sizes (`Stage`, blocks/numbers/blocks.h) into stages, adding each code that the list
+/// does not contain yet (`iopp_stages`, iopp.h:120-130).
+pub fn iopp_stages(solved: &[crate::numbers::blocks::Stage], codes: &mut Codes) -> Vec<IoppStage> {
+    fn place(list: &mut Vec<crate::code::code::Code>, c: &crate::numbers::codes::CodeSize) -> CodeId {
+        let code = crate::code::code::Code {
+            log_n: c.log_n,
+            ell: c.ell as usize,
+            r: c.r as usize,
+        };
+        for (i, x) in list.iter().enumerate() {
+            if *x == code {
+                return i as CodeId;
+            }
+        }
+        list.push(code);
+        (list.len() - 1) as CodeId
+    }
+    let mut st = Vec::with_capacity(solved.len());
+    for s in solved {
+        st.push(IoppStage {
+            code: place(&mut codes.base, &s.g.main),
+            mask_code: place(&mut codes.mask, &s.g.mask),
+            k: s.g.k,
+            h: s.g.h,
+        });
+    }
+    st
+}
+
+/// Null, or what differs between the stages a run has and the sizes its plan was made from
+/// (`iopp_sized_fault`, iopp.h:140-153).
+pub fn iopp_sized_fault(
+    codes: &Codes,
+    stages: &[IoppStage],
+    solved: &[crate::numbers::blocks::Stage],
+) -> Option<&'static str> {
+    if stages.len() != solved.len() {
+        return Some("the proximity test is sized for another number of stages than it has");
+    }
+    let same = |run: &crate::code::code::Code, priced: &crate::numbers::codes::CodeSize| {
+        run.log_n == priced.log_n && run.ell as u64 == priced.ell && run.r as u64 == priced.r
+    };
+    for i in 0..stages.len() {
+        if stages[i].code as usize >= codes.base.len() || stages[i].mask_code as usize >= codes.mask.len()
+        {
+            return Some("a stage of the proximity test names a code that is not there");
+        }
+        if stages[i].k != solved[i].g.k || stages[i].h != solved[i].g.h {
+            return Some("a stage of the proximity test is sized for another number of rows than it has");
+        }
+        if !same(&codes.base[stages[i].code as usize], &solved[i].g.main) {
+            return Some("a stage of the proximity test is sized for another main code than it names");
+        }
+        if !same(&codes.mask[stages[i].mask_code as usize], &solved[i].g.mask) {
+            return Some("a stage of the proximity test is sized for another mask code than it names");
+        }
+    }
+    None
+}
+
 pub fn iopp_fold_shape(s: &IoppStage, mut layout: GroupLayout) -> FoldShape {
     layout.k = s.k;
     layout.h = s.h;
@@ -260,4 +320,52 @@ pub fn iopp_verify_public(
     let st = V.ch.get(stages).clone();
     let ch = *V.ch.get(choice);
     iopp_verify(V, g, &st, ch, first_mask, calls)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::vec;
+    use crate::numbers::blocks::{GroupSize, Stage};
+    use crate::numbers::codes::CodeSize;
+
+    fn stage(k: u32, h: u32, log_n: u32, ell: u64, r: u64) -> Stage {
+        let mut g = GroupSize::default();
+        g.k = k;
+        g.h = h;
+        g.main = CodeSize { name: String::from("m"), log_n, ell, r, over_e: true };
+        g.mask = CodeSize { name: String::from("z"), log_n: log_n - 1, ell, r, over_e: true };
+        Stage { g, t: 0, r_ood: 0 }
+    }
+
+    #[test]
+    fn stages_place_and_dedup_their_codes() {
+        let mut codes = Codes::default();
+        let solved = vec![stage(2, 1, 8, 100, 10), stage(0, 0, 8, 100, 10)];
+        let st = iopp_stages(&solved, &mut codes);
+        assert_eq!(st.len(), 2);
+        assert_eq!(st[0].code, 0);
+        assert_eq!(st[1].code, 0);
+        assert_eq!(st[0].mask_code, 0);
+        assert_eq!(codes.base.len(), 1);
+        assert_eq!(codes.mask.len(), 1);
+        assert_eq!(iopp_sized_fault(&codes, &st, &solved), None);
+
+        let mut bad = solved.clone();
+        bad[0].g.k = 3;
+        assert_eq!(
+            iopp_sized_fault(&codes, &st, &bad),
+            Some("a stage of the proximity test is sized for another number of rows than it has")
+        );
+        let mut bad = solved.clone();
+        bad[0].g.main.r = 11;
+        assert_eq!(
+            iopp_sized_fault(&codes, &st, &bad),
+            Some("a stage of the proximity test is sized for another main code than it names")
+        );
+        assert_eq!(
+            iopp_sized_fault(&codes, &st[..1], &solved),
+            Some("the proximity test is sized for another number of stages than it has")
+        );
+    }
 }

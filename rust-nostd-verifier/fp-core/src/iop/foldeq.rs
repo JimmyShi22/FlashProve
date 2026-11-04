@@ -582,6 +582,110 @@ impl<'a> TableRead<'a> {
     }
 }
 
+/// A table that has passed its test (`TestedTable`, foldeq.h:412-437). Apart from the crate's own
+/// checkers, only `UnprovedTable::as_if_tested()` makes one that counts as tested; a default table
+/// is untested.
+#[derive(Clone, Debug, Default)]
+pub struct TestedTable {
+    key: IndexKey,
+    under: Setting,
+    key_public: Vec<u8>,
+    tested: bool,
+}
+
+impl TestedTable {
+    /// The crate's checkers make one after every chain of the file has been accepted.
+    #[allow(dead_code)]
+    pub(crate) fn new_tested(key: IndexKey, under: &Setting, key_public: Vec<u8>) -> Self {
+        TestedTable { key, under: under.clone(), key_public, tested: true }
+    }
+    pub fn reader(&self) -> &IndexKey {
+        &self.key
+    }
+    /// Null: no test has passed.
+    pub fn tested_under(&self) -> Option<&Setting> {
+        if self.tested { Some(&self.under) } else { None }
+    }
+    /// What `key_public_bytes()` gave at the key's check; a leaf table has the bytes of the key to
+    /// which it is linked.
+    pub fn key_public(&self) -> &[u8] {
+        &self.key_public
+    }
+}
+
+impl IndexReader for TestedTable {
+    fn shape(&self) -> &IndexShape {
+        self.key.shape()
+    }
+    fn record(&self) -> &IndexRecord {
+        self.key.record()
+    }
+    fn commitment(&self) -> Vec<u8> {
+        self.key.commitment()
+    }
+    fn name(&self) -> Vec<u8> {
+        self.key.name()
+    }
+    fn configuration(&self) -> Digest {
+        self.key.configuration()
+    }
+    fn fault(&self) -> Option<&'static str> {
+        self.key.fault()
+    }
+    fn read(
+        &self,
+        ch: &mut VerifierRounds<'_, '_, '_>,
+        at: &PositionList,
+        columns: &mut Vec<F>,
+        calls: &mut HashCalls,
+    ) -> bool {
+        self.key.read(ch, at, columns, calls)
+    }
+}
+
+/// A table's reader taken from the first bytes of a key file or leaf file, without the proofs that
+/// follow them (`UnprovedTable`, foldeq.h:444-464).
+#[derive(Clone, Debug, Default)]
+pub struct UnprovedTable {
+    key: IndexKey,
+    under: Setting,
+    key_public: Vec<u8>,
+    read_: bool,
+}
+
+impl UnprovedTable {
+    #[allow(dead_code)]
+    pub(crate) fn new_read(key: IndexKey, under: &Setting, key_public: Vec<u8>) -> Self {
+        UnprovedTable { key, under: under.clone(), key_public, read_: true }
+    }
+    pub fn reader(&self) -> &IndexKey {
+        &self.key
+    }
+    /// An unfilled table, as after a failed read that the caller ignored, gives an untested table.
+    #[allow(dead_code)]
+    pub(crate) fn as_if_tested(&self) -> TestedTable {
+        if self.read_ {
+            TestedTable::new_tested(self.key.clone(), &self.under, self.key_public.clone())
+        } else {
+            TestedTable::default()
+        }
+    }
+}
+
+/// `IfTested` (foldeq.h:400): a result other than NO is worth a yes only if the table's own files
+/// pass; it converts to neither bool nor `ProofVerdict`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IfTested {
+    No,
+    YesIfTheTableIsTested,
+    YesWithWorkIfTheTableIsTested,
+}
+
+/// What the two functions that return `IfTested` leave in `why` unless they reject
+/// (`IF_TESTED_WHY`, foldeq.h:404-405).
+pub const IF_TESTED_WHY: &str =
+    "not refused; worth a yes only if the checks of the table's own files pass";
+
 /// Whether a read's error bound needs a table that has passed an earlier test (`TableStanding`,
 /// foldeq.h:486).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

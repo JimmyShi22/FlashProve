@@ -197,3 +197,16 @@ pub fn member_first_verify(
     V.note("member: the claim's target", one.target);
     lin_first_verify(V, x, member_claim(one), out, calls)
 }
+
+/// The pending claims on the table, as BATT if there are several (`plan_member_rows`,
+/// member.h:116-118).
+pub fn plan_member_rows(
+    p: &mut crate::numbers::plan::Plan,
+    where_: &str,
+    rows: u64,
+    k_col: u32,
+) {
+    if rows > 1 {
+        crate::numbers::blocks::plan_batt(p, where_, rows, k_col);
+    }
+}
