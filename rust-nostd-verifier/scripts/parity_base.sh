@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# S2b-1 parity: the foundation modules
-#   iop/message.h, chain/{chain,public,rounds}.h, tree/* (verifier side), code/*.
+# S2b parity: the base blocks
+#   S2b-1: iop/message.h, chain/{chain,public,rounds}.h, tree/* (verifier side), code/*;
+#   S2b-2: algebraic and fold blocks (tensor, hp, psc, mask, bat, fold, cs, iopp, send, ...);
+#   S2b-3: commitment and lookup blocks (foldeq, lin, link, member, lkp, rng, wf).
 #
 #   1. each C++ vector tool is built from the checkout's headers and run;
 #   2. its output is compared byte for byte with the stored fixture;
@@ -55,8 +57,15 @@ check_cpp fold_output_vectors fold_output_vectors.txt
 check_cpp iop_core_vectors iop_core_vectors.txt
 check_cpp iop_data_vectors iop_data_vectors.txt
 check_cpp components_vectors components_vectors.txt
+check_cpp send_vectors send_vectors.txt
+check_cpp foldeq_vectors foldeq_vectors.txt
+check_cpp lin_vectors lin_vectors.txt
+check_cpp link_member_vectors link_member_vectors.txt
+check_cpp lkp_vectors lkp_vectors.txt
+check_cpp rng_vectors rng_vectors.txt
+check_cpp wf_vectors wf_vectors.txt
 
-for test in message_vectors chain_vectors tree_code_vectors rounds_vectors tensor_vectors hp_fold_vectors fold_output_vectors iop_core_vectors iop_data_vectors components_vectors; do
+for test in message_vectors chain_vectors tree_code_vectors rounds_vectors tensor_vectors hp_fold_vectors fold_output_vectors iop_core_vectors iop_data_vectors components_vectors send_vectors foldeq_vectors lin_vectors link_member_vectors lkp_vectors rng_vectors wf_vectors; do
   if cargo test --manifest-path "$here/Cargo.toml" -p fp-host --test "$test" >"$tmp/$test.log" 2>&1; then
     ok "Rust $test"
   else
