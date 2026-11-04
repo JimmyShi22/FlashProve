@@ -2,4 +2,4 @@
 resolver = "2"
 members = ["fp-core", "fp-host"]
 
-# No third-party dependencies. `libm` is deferred to S2 and needs a TL decision.
+# libm is approved by TL (lane C printed figures and the attention tables), pinned to =0.2.16 in fp-core.
