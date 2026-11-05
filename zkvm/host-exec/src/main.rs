@@ -153,6 +153,15 @@ fn main() {
     let reference = hostlib::run_fp_host(&args.root, &config, &inputs)
         .unwrap_or_else(|e| fail(&format!("{e:#}")));
     let reference_out = reference.stdout.as_str();
+    // fp-host exits with the reference verifier's own status for the verdict; the committed call
+    // status comes from the report text. They are independent readings and must agree.
+    let status_ok = i32::from(values.call_status) == reference.status;
+    println!(
+        "host-exec: fp-host exit status {}, committed call status {}{}",
+        reference.status,
+        values.call_status,
+        if status_ok { "" } else { " (DIFFERS)" }
+    );
     let want_result = reference_out
         .lines()
         .find(|l| l.starts_with("result-v1 "))
@@ -195,14 +204,14 @@ fn main() {
         }
     );
 
-    if !(result_ok && yes_ok && pv_ok) {
+    if !(result_ok && yes_ok && pv_ok && status_ok) {
         fail("the guest's public output does not match fp-host");
     }
     if status != 0 {
         fail(&format!("the guest ended with status {status}, expected 0"));
     }
     println!(
-        "host-exec: PASS (public values, result-v1 and YES are byte-identical to fp-host; vkey {} matches the ELF)",
+        "host-exec: PASS (public values, result-v1, YES and the call status match fp-host; vkey {} matches the ELF)",
         record.sp1.vkey_bytes32
     );
 }

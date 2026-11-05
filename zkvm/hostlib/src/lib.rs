@@ -318,8 +318,9 @@ impl Inputs {
         stdin
     }
 
-    /// Per-file sizes and SHA-256 values, plus the canonical bundle digest.
-    pub fn manifest(&self) -> InputManifest {
+    /// The frozen description of this call's input files. Paths are relative to the repository
+    /// root, so a manifest recorded on one machine can be checked on another.
+    pub fn manifest(&self, root: &Path) -> InputManifest {
         let files: [(&str, std::path::PathBuf, &[u8]); 9] = [
             ("policy", self.config_dir.join("policy.txt"), &self.policy),
             ("layout", self.config_dir.join("layout.txt"), &self.layout),
@@ -332,13 +333,14 @@ impl Inputs {
             ("id", self.id_path.clone(), self.id.as_bytes()),
         ];
         InputManifest {
+            schema: INPUT_MANIFEST_SCHEMA.to_string(),
             entry_number: self.entry_number,
             input_digest: hex(&self.input_digest()),
             files: files
                 .into_iter()
                 .map(|(name, path, bytes)| FileEntry {
-                    name,
-                    path: path.display().to_string(),
+                    name: name.to_string(),
+                    path: relative(root, &path),
                     size: bytes.len() as u64,
                     sha256: hex(&fp_pv::sha256(bytes)),
                 })
@@ -347,19 +349,86 @@ impl Inputs {
     }
 }
 
-#[derive(Debug, Serialize)]
+/// The schema of a frozen input manifest (`fp-input-manifest/v1`).
+pub const INPUT_MANIFEST_SCHEMA: &str = "fp-input-manifest/v1";
+
+fn relative(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .display()
+        .to_string()
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct InputManifest {
+    pub schema: String,
     pub entry_number: u32,
     pub input_digest: String,
     pub files: Vec<FileEntry>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FileEntry {
-    pub name: &'static str,
+    pub name: String,
     pub path: String,
     pub size: u64,
     pub sha256: String,
+}
+
+impl InputManifest {
+    /// Fails unless a stored manifest describes the same call: the leaf number, the bundle digest
+    /// and every file's name, size and SHA-256. Paths are not compared, so a manifest frozen on
+    /// the machine that holds the call also fits the prover's copy elsewhere.
+    pub fn compare(&self, stored: &InputManifest) -> Result<()> {
+        if stored.schema != INPUT_MANIFEST_SCHEMA {
+            bail!(
+                "the manifest schema is {:?}, expected {INPUT_MANIFEST_SCHEMA:?}",
+                stored.schema
+            );
+        }
+        if self.entry_number != stored.entry_number {
+            bail!(
+                "the manifest names leaf {}, but the proof header names leaf {}",
+                stored.entry_number,
+                self.entry_number
+            );
+        }
+        if self.input_digest != stored.input_digest {
+            bail!(
+                "the input digest is 0x{}, but the manifest records 0x{}",
+                self.input_digest,
+                stored.input_digest
+            );
+        }
+        if self.files.len() != stored.files.len() {
+            bail!(
+                "the manifest has {} files, but this call has {}",
+                stored.files.len(),
+                self.files.len()
+            );
+        }
+        for (i, want) in stored.files.iter().enumerate() {
+            if stored.files[..i].iter().any(|f| f.name == want.name) {
+                bail!("the manifest names the file {:?} twice", want.name);
+            }
+            let Some(got) = self.files.iter().find(|f| f.name == want.name) else {
+                bail!("the manifest names a file {:?} that this call does not have", want.name);
+            };
+            if got.size != want.size || got.sha256 != want.sha256 {
+                bail!(
+                    "{}: this call has {} bytes, sha256 {}, but the manifest records {} bytes, sha256 {}",
+                    want.name,
+                    got.size,
+                    got.sha256,
+                    want.size,
+                    want.sha256
+                );
+            }
+        }
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -635,9 +704,41 @@ mod tests {
             inputs.proof.len(),
             "the bundle borrows the loaded proof"
         );
-        let manifest = inputs.manifest();
+        let manifest = inputs.manifest(&root);
         assert_eq!(manifest.files.len(), 9);
         assert_eq!(manifest.input_digest.len(), 64);
+        assert_eq!(manifest.schema, INPUT_MANIFEST_SCHEMA);
+        for file in &manifest.files {
+            assert!(
+                !Path::new(&file.path).is_absolute(),
+                "the manifest path {:?} must be root-relative",
+                file.path
+            );
+        }
+    }
+
+    #[test]
+    fn manifest_roundtrip_and_compare() {
+        let root = find_root(Path::new(env!("CARGO_MANIFEST_DIR"))).expect("repository root");
+        let config = load_config(&default_config_path(&root)).expect("the main configuration");
+        let inputs = load_inputs(&root, &config).expect("the accepted example");
+        let manifest = inputs.manifest(&root);
+
+        let text = serde_json::to_string(&manifest).expect("serialize");
+        let stored: InputManifest = serde_json::from_str(&text).expect("deserialize");
+        manifest.compare(&stored).expect("a manifest must match itself");
+
+        let mut changed = stored;
+        changed.files[0].sha256 = "00".repeat(32);
+        assert!(manifest.compare(&changed).is_err(), "a changed file hash was accepted");
+
+        let mut changed: InputManifest = serde_json::from_str(&text).expect("deserialize");
+        changed.entry_number += 1;
+        assert!(manifest.compare(&changed).is_err(), "a changed leaf number was accepted");
+
+        let mut changed: InputManifest = serde_json::from_str(&text).expect("deserialize");
+        changed.input_digest = "11".repeat(32);
+        assert!(manifest.compare(&changed).is_err(), "a changed bundle digest was accepted");
     }
 
     #[test]

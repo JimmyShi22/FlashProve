@@ -1,12 +1,17 @@
 //! B2: inspect and recompute the `FPV1` public-values block outside the zkVM.
 //!
 //! ```text
-//! fp-pv manifest [--root DIR] [--config FILE]
+//! fp-pv manifest [--root DIR] [--config FILE] [--check FILE]
 //! fp-pv expected [--root DIR] [--config FILE] [--fp-host-output FILE] [--json]
 //! fp-pv decode (--hex HEX | --file FILE) [--json]
 //! fp-pv bundle   [--root DIR] [--config FILE] [--fp-host-output FILE] (--proof-hex HEX | --proof-file FILE)
 //! fp-pv check    [--root DIR] [--config FILE] [--fp-host-output FILE] (--pv-hex HEX | --pv-file FILE)
 //! ```
+//!
+//! `manifest` prints the frozen description of the call's input files (names, sizes, SHA-256
+//! values, the leaf number and the canonical bundle digest) with root-relative paths. With
+//! `--check FILE` it compares the files on disk with a recorded manifest, ignoring paths, so the
+//! provider and the client can agree on the exact inputs before proving.
 //!
 //! `expected` runs `fp-host` on the configured inputs (unless its stdout is supplied) and prints
 //! the block those files imply: the commitment ID, the verdict, and the SHA-256 digests of the
@@ -23,7 +28,7 @@ use fp_pv::Values;
 
 fn usage() -> ! {
     eprintln!(
-        "usage:\n  fp-pv manifest [--root DIR] [--config FILE]\n  fp-pv expected [--root DIR] [--config FILE] [--fp-host-output FILE] [--json]\n  fp-pv decode (--hex HEX | --file FILE) [--json]\n  fp-pv bundle [--root DIR] [--config FILE] [--fp-host-output FILE] (--proof-hex HEX | --proof-file FILE)\n  fp-pv check [--root DIR] [--config FILE] [--fp-host-output FILE] (--pv-hex HEX | --pv-file FILE)"
+        "usage:\n  fp-pv manifest [--root DIR] [--config FILE] [--check FILE]\n  fp-pv expected [--root DIR] [--config FILE] [--fp-host-output FILE] [--json]\n  fp-pv decode (--hex HEX | --file FILE) [--json]\n  fp-pv bundle [--root DIR] [--config FILE] [--fp-host-output FILE] (--proof-hex HEX | --proof-file FILE)\n  fp-pv check [--root DIR] [--config FILE] [--fp-host-output FILE] (--pv-hex HEX | --pv-file FILE)"
     );
     std::process::exit(2)
 }
@@ -69,29 +74,6 @@ struct Common {
     fp_host_output: Option<PathBuf>,
 }
 
-fn parse_common(args: &mut impl Iterator<Item = String>, root: Option<PathBuf>, config: Option<PathBuf>) -> Result<Common> {
-    let mut root = root;
-    let mut config = config;
-    let mut fp_host_output = None;
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--root" => root = Some(PathBuf::from(args.next().context("--root needs a value")?)),
-            "--config" => config = Some(PathBuf::from(args.next().context("--config needs a value")?)),
-            "--fp-host-output" => {
-                fp_host_output =
-                    Some(PathBuf::from(args.next().context("--fp-host-output needs a value")?))
-            }
-            other => bail!("unknown or misplaced argument {other:?}"),
-        }
-    }
-    let root = match root {
-        Some(root) => root,
-        None => hostlib::find_root(&std::env::current_dir()?)?,
-    };
-    let config = config.unwrap_or_else(|| hostlib::default_config_path(&root));
-    Ok(Common { root, config, fp_host_output })
-}
-
 fn expected_values(common: &Common) -> Result<(hostlib::Inputs, Values, [u8; fp_pv::PV_LEN])> {
     let config = hostlib::load_config(&common.config)?;
     let inputs = hostlib::load_inputs(&common.root, &config)?;
@@ -127,10 +109,39 @@ fn run() -> Result<()> {
     let Some(command) = args.next() else { usage() };
     match command.as_str() {
         "manifest" => {
-            let common = parse_common(&mut args, None, None)?;
-            let config = hostlib::load_config(&common.config)?;
-            let inputs = hostlib::load_inputs(&common.root, &config)?;
-            print_json(&serde_json::to_value(inputs.manifest())?)
+            let mut root = None;
+            let mut config = None;
+            let mut check = None;
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--root" => root = Some(PathBuf::from(args.next().context("--root needs a value")?)),
+                    "--config" => config = Some(PathBuf::from(args.next().context("--config needs a value")?)),
+                    "--check" => check = Some(PathBuf::from(args.next().context("--check needs a value")?)),
+                    other => bail!("unknown argument {other:?}"),
+                }
+            }
+            let root = root.unwrap_or(hostlib::find_root(&std::env::current_dir()?)?);
+            let config = config.unwrap_or_else(|| hostlib::default_config_path(&root));
+            let config = hostlib::load_config(&config)?;
+            let inputs = hostlib::load_inputs(&root, &config)?;
+            let manifest = inputs.manifest(&root);
+            match check {
+                None => print_json(&serde_json::to_value(manifest)?),
+                Some(path) => {
+                    let text = fs::read_to_string(&path)
+                        .with_context(|| format!("cannot read {}", path.display()))?;
+                    let stored: hostlib::InputManifest = serde_json::from_str(&text)
+                        .with_context(|| format!("cannot parse {}", path.display()))?;
+                    manifest.compare(&stored)?;
+                    println!(
+                        "fp-pv: MATCH ({} files, leaf {}, input digest 0x{})",
+                        manifest.files.len(),
+                        manifest.entry_number,
+                        manifest.input_digest
+                    );
+                    Ok(())
+                }
+            }
         }
         "expected" => {
             let mut json = false;

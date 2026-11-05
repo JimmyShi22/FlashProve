@@ -15,7 +15,7 @@ S5 consistency gate.
 | Task | Where | Content |
 |---|---|---|
 | B1 | `zkvm/fp-pv` (schema), `zkvm/hostlib/src/bin/gen-vkey.rs`, `zkvm/config/vkey.json` | `client.setup(elf)` → `SP1VerifyingKey::bytes32`; the record holds the ELF path, size and SHA-256, the SP1 SDK and circuit versions, the on-chain vkey and the Poseidon2 digest. `--update`, `--check` (full re-derivation) and `--check-elf` (hash only). |
-| B2 | `zkvm/fp-pv/src/{pv,inputs,sha256}.rs`, `zkvm/guest/src/main.rs`, `zkvm/host-exec/src/main.rs` | The `FPV1` block and the canonical input digest; the guest commits the block first with `commit_slice` (offset 0), then the unchanged report text, then the status; `host-exec` rebuilds the same block from `fp-host`'s stdout and requires byte equality. |
+| B2 | `zkvm/fp-pv/src/{pv,inputs,sha256}.rs`, `zkvm/guest/src/main.rs`, `zkvm/host-exec/src/main.rs`, `zkvm/config/input-manifest.json` | The `FPV1` block and the canonical input digest; the guest commits the block first with `commit_slice` (offset 0), then the unchanged report text, then the status; `host-exec` rebuilds the same block from `fp-host`'s stdout, requires byte equality, and requires the committed call status to equal `fp-host`'s exit status. `fp-pv manifest` freezes the nine input files and `--check` verifies them on another machine. |
 | B3 | `zkvm/contracts/` | ERC-8274 `IProofVerifier` (`SP1ProofVerifier`) and `IAgentVerifier` (`FlashProveAgentVerifier`), the vendored SP1 verifier interface, the `FPV1` decoder, a mock SP1 verifier, tests, a production deploy script and an anvil smoke script. |
 | B4 | `zkvm/hostlib/src/bin/fp-prover.rs` | CPU / CUDA / mock backends behind one config; `cuda` is the config default; `--plan` validates without `setup`; proofs are verified locally and written with public values, `pv.bin` and an ABI-ready bundle. |
 | B5 | `zkvm/docs/handoff.md` | The no-names handoff: frozen hashes, requirements, build/prove/verify steps, outputs, resource estimates and limits. |
@@ -43,7 +43,11 @@ The canonical input digest is `SHA-256("FlashProve/input-v1\0" || len‖policy �
 len‖KL ‖ len‖key ‖ len‖entry ‖ entry_number(u32 LE) ‖ len‖request ‖ len‖y ‖ len‖proof ‖
 len‖id)`. It does not depend on SP1's stdin serialization, so a provider computes it from the
 files, the guest computes it from the values it read, and they must agree. `fp-pv manifest` prints
-every file's SHA-256 and the bundle digest.
+the nine files with root-relative paths, their sizes, their SHA-256 values, the leaf number and the
+bundle digest. `zkvm/config/input-manifest.json` is the accepted example's frozen manifest;
+`fp-pv manifest --check zkvm/config/input-manifest.json` must print `MATCH`. The check ignores the
+path strings, so the provider's copy may live elsewhere and the files are compared by name, size
+and SHA-256. This is how the two sides agree on the bytes before a proof.
 
 `from_report` derives the block from the report text alone, so the guest and `fp-host` use the same
 function; the only difference is where the text comes from. On the accepted example the block is:
@@ -116,13 +120,15 @@ the one-time ELF → vkey derivation; `fp-prover` repeats it at proving start.
 compares:
 
 - the `result-v1` line and `YES` with `fp-host` (the S5 gate, unchanged);
-- the guest's `FPV1` block with the block rebuilt from `fp-host`'s stdout and the same files.
+- the guest's `FPV1` block with the block rebuilt from `fp-host`'s stdout and the same files;
+- the committed call status with `fp-host`'s exit status — an independent check of
+  `from_report`'s verdict-to-status mapping, which the blocks alone cannot catch.
 
 ```
 host-exec: sp1 circuit v6.1.0, guest ELF .../riscv64im-succinct-zkvm-elf/release/guest (12184776 bytes, sha256 0c78b659f7e7df5a8bb84675a5cac5e3c40242fdf5fc077667da93e2345dd30d)
 host-exec: vkey 0x007991cd508039250725758bafb93d0173397e4743679884dfd7cae0ca21d0aa
 host-exec: input digest 0xe0ea24c85e2fe7e6458b8d574aa429bb0e9e7ce0a25b6efc605e4afbd3294392
-host-exec: execute 874.93 s, guest exit code 0, status 0
+host-exec: execute 496.67 s, guest exit code 0, status 0
 host-exec: total cycles 27547235173
 host-exec: shards 1642 (estimate ceil(cycles / shard_size), shard_size 16777216; the executor also splits at the trace-area thresholds)
 host-exec: syscalls 0
@@ -132,13 +138,15 @@ host-exec: public output (6571 bytes):
   result-v1 status=0 claim=exact-match id=79a5a2bc7a469b40df73dedf40abeb740671e8ae8077738bd3743897aeb22183 bits=128 work=32 work-rounds=38 least-round=128.00 least-round-without-work=96.23 commitment-assumed-rounds=49 record=1 r=60 e=64 T=64 tokens=61..63 y=yes policy=exact-match C=256 theta=256 cap=0 s=16 sh=8 sT=4 F=24 above-clip=0 leaf=0 stages=key,leaf,request dw=8 build=93afdaf592393a54ebd17b681d1c03295eb883f0161ff0e6ab872a3b39939595
   YES
 host-exec: public values FPV1 verdict=YES status=0 result-v1-status=0 id=0x79a5a2bc7a469b40df73dedf40abeb740671e8ae8077738bd3743897aeb22183 input=0xe0ea24c85e2fe7e6458b8d574aa429bb0e9e7ce0a25b6efc605e4afbd3294392 result=0x0af488bb91e0d3b3b645a7f44f990968e50312a40ff4c88b0d606283e9b4ec43
+host-exec: fp-host exit status 0, committed call status 0
 host-exec: result-v1 IDENTICAL
 host-exec: YES IDENTICAL
 host-exec: public values IDENTICAL to fp-host
-host-exec: PASS (public values, result-v1 and YES are byte-identical to fp-host; vkey 0x007991cd508039250725758bafb93d0173397e4743679884dfd7cae0ca21d0aa matches the ELF)
+host-exec: PASS (public values, result-v1, YES and the call status match fp-host; vkey 0x007991cd508039250725758bafb93d0173397e4743679884dfd7cae0ca21d0aa matches the ELF)
 ```
 
-The execute took 874.93 s under load on the same 10-core Mac. The guest now runs 27,547,235,173 cycles:
+The execute took 496.67 s on the same 10-core Mac (874.93 s in an earlier run under load; the
+cycle count is identical). The guest now runs 27,547,235,173 cycles:
 27.08 G at S5a-2 plus about 0.47 G (1.7%) for the canonical input digest, which the guest computes
 with SHA-256 over the 5.8 MB of input files. The S5 gate is about the printed lines, not the cycle
 count, so this addition is the only cost of B2 inside the zkVM.
@@ -147,6 +155,13 @@ The two digests were also recomputed outside Rust, so the scheme is not merely s
 between two Rust call sites: a Python `hashlib`/`struct` script over the same nine files reproduces
 the input digest `e0ea24c8…3294392`, and `shasum -a 256` of the `result-v1` line (newline excluded)
 reproduces `0af488bb…b4ec43`.
+
+The input convention is frozen in `zkvm/config/input-manifest.json` (root-relative paths, per-file
+sizes and SHA-256 values, the leaf number and the bundle digest). On the same files:
+
+```
+fp-pv: MATCH (9 files, leaf 0, input digest 0xe0ea24c85e2fe7e6458b8d574aa429bb0e9e7ce0a25b6efc605e4afbd3294392)
+```
 
 ### B3 — contracts and anvil
 
@@ -295,8 +310,9 @@ source tree is identical before and after the switch.
 
 ## 6. Files
 
-New: `zkvm/fp-pv/`, `zkvm/hostlib/`, `zkvm/config/`, `zkvm/contracts/`, `zkvm/fixtures/smoke/`,
-`zkvm/scripts/`, `zkvm/docs/handoff.md`.
+New: `zkvm/fp-pv/`, `zkvm/hostlib/`, `zkvm/config/` (including the frozen
+`input-manifest.json`), `zkvm/contracts/`, `zkvm/fixtures/smoke/`, `zkvm/scripts/`,
+`zkvm/docs/handoff.md`.
 
 Changed: `zkvm/guest/src/main.rs` (commits the block first), `zkvm/guest/Cargo.toml`,
 `zkvm/host-exec/src/main.rs` (configuration, block comparison, vkey check),
