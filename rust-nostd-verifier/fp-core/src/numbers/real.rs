@@ -138,6 +138,12 @@ impl Big {
     }
 
     pub fn shr(&self, n: usize) -> Self {
+        if n == 0 {
+            return self.clone();
+        }
+        if self.fits_u64() && n < 64 {
+            return Big::from_u64(self.to_u64() >> n);
+        }
         let q = n / 32;
         let s = n % 32;
         if q >= self.w.len() {
@@ -225,6 +231,10 @@ impl Big {
         if a.is_zero() || b.is_zero() {
             return Big::zero();
         }
+        // The common small case: both operands fit one limb.
+        if a.w.len() == 1 && b.w.len() == 1 {
+            return Big::from_u64((a.w[0] as u64) * (b.w[0] as u64));
+        }
         let mut r = vec![0u32; a.w.len() + b.w.len()];
         for i in 0..a.w.len() {
             let mut c = 0u64;
@@ -243,6 +253,13 @@ impl Big {
     /// `q = floor(a / b)`, `r = a - q b` (`Big::divmod`, Knuth's Algorithm D).
     pub fn divmod(a: &Big, b: &Big) -> (Big, Big) {
         assert!(!b.is_zero(), "Big: division by zero");
+        // The common case: both operands fit one 64-bit word. The limb loops (and the Knuth
+        // normalisation) are then pure overhead.
+        if a.fits_u64() && b.fits_u64() {
+            let av = a.to_u64();
+            let bv = b.to_u64();
+            return (Big::from_u64(av / bv), Big::from_u64(av % bv));
+        }
         if Big::cmp(a, b) == Ordering::Less {
             return (Big::zero(), a.clone());
         }
@@ -265,7 +282,14 @@ impl Big {
             top <<= 1;
             s += 1;
         }
-        let v = b.shl(s);
+        // With no normalisation shift the divisor can be read where it is; `shl(0)` would copy it.
+        let v_owned;
+        let v: &Big = if s == 0 {
+            b
+        } else {
+            v_owned = b.shl(s);
+            &v_owned
+        };
         let mut u = a.shl(s);
         let n = v.w.len();
         let want = u.w.len().max(a.w.len() + 1);

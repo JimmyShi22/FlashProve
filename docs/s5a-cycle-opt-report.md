@@ -382,3 +382,30 @@ and copying dominate natively, and field/big-integer arithmetic is the pure-comp
   would change the builder API for no measured benefit; the other `Vec::new()` sites in
   `smallness.rs` are one-time structure construction. The remaining allocation traffic in the
   guest is the bump allocator plus growth copies, not per-call tensor garbage.
+
+### Step 1b item 3: Big-arithmetic fast paths (kept, −0.91%)
+
+- **Change** (`fp-core/src/numbers/real.rs`, four contained specialisations; no representation
+  change):
+  1. `Big::divmod`: when both operands fit one 64-bit word, do a native `u64` divide/modulo
+     instead of the limb loop (and the Knuth normalisation). The division-by-zero `assert` stays
+     first, so the contract is unchanged.
+  2. `Big::mul`: one-limb × one-limb operands multiply as `u64` and go through `from_u64` instead
+     of allocating a two-limb zeroed result and running the carry loop.
+  3. `Big::shr`: `n == 0` returns `self.clone()` (the generic path rebuilt the limbs); a value
+     that fits `u64` with `n < 64` shifts as `u64`.
+  4. `Big::divmod` multi-limb path: when the normalisation shift `s` is zero (the divisor's top
+     limb already has its high bit set) the divisor is borrowed instead of copied through
+     `shl(0)`; one `Vec` allocation per divide disappears.
+- **Not changed**: `shl` already returns a clone for `n == 0`, and its generic path is what a
+  `u64 << n` fast path would have to do anyway once the result exceeds 64 bits (build up to three
+  limbs). The remaining divide-loop allocations (`u = a.shl(s)` and the per-digit `t` buffer) are
+  structural; the measured result below already includes the reduced allocation traffic.
+- **Gates**: `cargo test --workspace` **229 passed**; `scripts/parity_numbers.sh` **PASS**
+  (the number vectors cover the division/multiplication/shift edge cases directly); full execute
+  **26,628,389,161 cycles** against 26,872,664,302: **−244,275,141 (−0.91%)**; `result-v1`/`YES`
+  IDENTICAL; consistency PASS. Guest ELF SHA-256
+  `34abfffdfa9aad5f5a84188c8ed75357a181d124ef574ece2592d4c127e3ad7d`, 12,236,152 bytes.
+- **Kept.** This is the largest single-step gain so far in S5a-3 and confirms the sampling
+  attribution (`Big` ~15% of native samples, small operands dominate): the savings come from
+  avoiding allocation and long-division machinery on values that fit a machine word.
