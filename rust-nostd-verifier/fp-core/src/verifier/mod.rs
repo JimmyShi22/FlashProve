@@ -13,6 +13,7 @@ pub mod norm_digit_rows;
 pub mod packing;
 pub mod segment;
 pub mod smallness;
+pub mod stage_context;
 pub mod stage_layout;
 pub mod sumcheck;
 pub mod tables;

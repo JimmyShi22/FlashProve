@@ -235,6 +235,34 @@ else
   tail -30 "$tmp/layout_vectors.log"
 fi
 
+echo "parity_subproof: building context_vectors"
+if clang++ -O2 -std=c++17 -pthread -Iverifier/src -Iblocks -Iprover -DBLK_FIELD=2 \
+  -DBLK_COUNT_HASH_CALLS=1 -DSERVING_BUILD=1 -DDIGEST_WORDS=8 \
+  -DVF_SOURCE_DIGEST='"93afdaf592393a54ebd17b681d1c03295eb883f0161ff0e6ab872a3b39939595"' \
+  -o "$tmp/context_vectors" "$here/scripts/cpp_vectors/context_vectors.cpp"; then
+  if "$tmp/context_vectors" "$here/fixtures/config/policy.txt" "$here/fixtures/config/KL.bin" \
+    >"$tmp/context_vectors.txt"; then
+    if cmp -s "$tmp/context_vectors.txt" "$here/fixtures/context_vectors.txt"; then
+      ok "context_vectors: output matches fixtures/context_vectors.txt"
+    else
+      bad "context_vectors: output differs from fixtures/context_vectors.txt"
+      diff -u "$here/fixtures/context_vectors.txt" "$tmp/context_vectors.txt" | head -20
+    fi
+  else
+    bad "context_vectors: C++ run"
+  fi
+else
+  bad "context_vectors: C++ build"
+fi
+
+if cargo test --manifest-path "$here/Cargo.toml" -p fp-host --test context_vectors \
+  >"$tmp/context_vectors.log" 2>&1; then
+  ok "Rust context_vectors"
+else
+  bad "Rust context_vectors"
+  tail -30 "$tmp/context_vectors.log"
+fi
+
 echo "parity_subproof: cargo build --workspace"
 if cargo build --manifest-path "$here/Cargo.toml" --workspace >"$tmp/build.log" 2>&1; then
   ok "cargo build --workspace"
