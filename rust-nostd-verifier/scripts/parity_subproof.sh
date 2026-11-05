@@ -293,6 +293,47 @@ else
   tail -30 "$tmp/req_chain_vectors.log"
 fi
 
+echo "parity_subproof: building layers_plan_vectors"
+if clang++ -O2 -std=c++17 -pthread -Iverifier/src -Iblocks -Iprover -DBLK_FIELD=2 \
+  -DBLK_COUNT_HASH_CALLS=1 -DSERVING_BUILD=1 -DDIGEST_WORDS=8 \
+  -DVF_SOURCE_DIGEST='"93afdaf592393a54ebd17b681d1c03295eb883f0161ff0e6ab872a3b39939595"' \
+  -o "$tmp/layers_plan_vectors" "$here/scripts/cpp_vectors/layers_plan_vectors.cpp"; then
+  if "$tmp/layers_plan_vectors" "$here/fixtures/config/policy.txt" "$here/fixtures/config/KL.bin" \
+    >"$tmp/layers_plan_vectors.txt"; then
+    if cmp -s "$tmp/layers_plan_vectors.txt" "$here/fixtures/layers_plan_vectors.txt"; then
+      ok "layers_plan_vectors: output matches fixtures/layers_plan_vectors.txt"
+    else
+      bad "layers_plan_vectors: output differs from fixtures/layers_plan_vectors.txt"
+      diff -u "$here/fixtures/layers_plan_vectors.txt" "$tmp/layers_plan_vectors.txt" | head -20
+    fi
+  else
+    bad "layers_plan_vectors: C++ run"
+  fi
+  if "$tmp/layers_plan_vectors" "$here/fixtures/config/policy.txt" "$here/fixtures/config/KL.bin" head \
+    >"$tmp/head_plan_vectors.txt"; then
+    if cmp -s "$tmp/head_plan_vectors.txt" "$here/fixtures/head_plan_vectors.txt"; then
+      ok "head_plan_vectors: output matches fixtures/head_plan_vectors.txt"
+    else
+      bad "head_plan_vectors: output differs from fixtures/head_plan_vectors.txt"
+      diff -u "$here/fixtures/head_plan_vectors.txt" "$tmp/head_plan_vectors.txt" | head -20
+    fi
+  else
+    bad "head_plan_vectors: C++ run"
+  fi
+else
+  bad "layers_plan_vectors: C++ build"
+fi
+
+for t in layers_plan_vectors head_plan_vectors; do
+  if cargo test --manifest-path "$here/Cargo.toml" -p fp-host --test "$t" \
+    >"$tmp/$t.log" 2>&1; then
+    ok "Rust $t"
+  else
+    bad "Rust $t"
+    tail -30 "$tmp/$t.log"
+  fi
+done
+
 echo "parity_subproof: cargo build --workspace"
 if cargo build --manifest-path "$here/Cargo.toml" --workspace >"$tmp/build.log" 2>&1; then
   ok "cargo build --workspace"

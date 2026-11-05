@@ -172,6 +172,7 @@ pub fn t2f_kappa_by_text(theta: E, c: u32) -> E {
 }
 
 /// One sub-proof's range check (`struct HTailF2`).
+#[derive(Clone, Debug)]
 pub struct HTailF2 {
     pub mz: u64,
     pub nm: usize,

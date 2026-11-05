@@ -168,7 +168,7 @@ pub struct Owed {
 }
 
 /// One sub-proof's state (`struct HFork`).
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct HFork {
     /// `G_`: the prefix of the sub-proof's rejection names.
     pub g: String,
