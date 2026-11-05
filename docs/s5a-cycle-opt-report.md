@@ -348,3 +348,19 @@ copies remain). The ranked families, not the exact percentages, are the usable s
 
 The exact shares are evidence that the earlier "BLAKE2b/compute" hypotheses were wrong: allocation
 and copying dominate natively, and field/big-integer arithmetic is the pure-compute core.
+
+### Step 1b item 1: E::mul by Karatsuba (measured, reverted)
+
+- **Change**: the cubic extension's product computed with six field multiplications (three
+  coordinate products plus three products of coordinate sums, then reconstruction) instead of the
+  three `dot3` calls (nine products summed lazily, three reductions); `#[inline(always)]`.
+- **Gates**: `parity_field.sh` PASS, `parity_e2e.sh` 3/3, `cargo test --lib` 149 — algebraically
+  identical.
+- **Full execute**: **30,538,990,976 cycles** against 27,055,820,319: **+3,483,170,657 (+12.87%)**.
+  The consistency gate still passes.
+- **Reverted.** Reason: `dot3` sums three 64×64 products before its single 192-bit reduction (one
+  `reduce128` per coefficient); Karatsuba saves three products but needs six individually reduced
+  products, and on RV64IM a reduction is ~10 instructions against 2 `mul` instructions per product.
+  The lazy-reduction schoolbook is the better shape on this target.
+- **Revert check**: the rebuilt guest ELF is bit-identical to the pre-change one (SHA-256
+  `9955586d5a34e9a9…`), so the 27,055,820,319 baseline stands without a rerun.
