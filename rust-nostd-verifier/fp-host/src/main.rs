@@ -1,12 +1,10 @@
-//! Host shell for the S1 verifier skeleton.
+//! Host shell for the verifier: the command line, file reading, the two header checks and the
+//! assembly of a whole call (`cpMain`, `cpStagesRun` and `cpCovered`).
 //!
-//! S1 implements the command line, file reading, the two header checks and the three-stage
-//! skeleton. Each stage body is still a stub: it returns `Internal("not-implemented")`, and the
-//! host prints `NOT CHECKED: internal-stage` with status 5. The stub path can never print `YES`.
-//!
-//! The C++ source of each piece is named in the comments. CLI text is taken from
-//! `verifier/src/cp_verify.cpp:3015-3115`; the static part is `usage.txt`, captured from the
-//! reference binary so that the bytes match.
+//! The three stages run in this process, each on a fresh `StageState`; their texts are joined into
+//! the call's output exactly as the reference program prints them. The C++ source of each piece is
+//! named in the comments. CLI text is taken from `verifier/src/cp_verify.cpp:3015-3115`; the static
+//! part is `usage.txt`, captured from the reference binary so that the bytes match.
 
 use std::env;
 use std::ffi::CStr;
@@ -14,15 +12,31 @@ use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::os::raw::c_char;
 use std::process::exit;
+use std::time::Instant;
 
-use fp_core::consts::{BAR, DIGEST_HALF_BITS, HEXW};
+use fp_core::consts::{
+    BAR, BUILD_SOURCE_DIGEST, DIGEST_HALF_BITS, DW, HEXW, STATUS_NOT_A_VERIFICATION,
+    STATUS_NOT_CHECKED,
+};
+use fp_core::frame::heads::configuration_digest;
 use fp_core::frame::parameters::pol_word_u64;
+use fp_core::hash::calls::HashCalls;
 use fp_core::head::{cp_key_head, cp_policy_word, cp_proof_head};
+use fp_core::numbers::accounting::Accounting;
+use fp_core::numbers::accounting_print::print_accounting;
+use fp_core::numbers::real::cut2;
 use fp_core::out::{
-    cp_not_checked_lines, input_unreadable_line, no_line, role_name,
+    cp_line_of, cp_not_checked_lines, cp_reason_of, input_unreadable_line, no_line, role_name,
 };
 use fp_core::refusal::Refusal;
 use fp_core::stage_state::StageState;
+use fp_core::verifier::common::{
+    above_clip, acceptance_policy_is_exact_match, hex64, internal_name, policy_empty, policy_kind,
+    policy_named_read, reject_long_text_file, PolicyNamed, COMMITMENTLINE, IDHIDDEN, IDLINE,
+    NOT_A_VERIFICATION_TEXT, RECORDCLAUSE, RESULTWORD, STAGEIDLINE, WITHIN, WORKLINE,
+    WORK_BITS_MOST,
+};
+use fp_core::verifier::run_stage::{run_stage, StageFiles, StageMode};
 
 const USAGE: &str = include_str!("usage.txt");
 
@@ -154,7 +168,6 @@ fn cp_main(args: &[String]) -> i32 {
     }
     // `cpPolicySays(policy, 0, 0)`: the numbers alone, before any file is opened.
     policy_says(&policy, 0, 0);
-    let _ = (below_bar, quiet, next_token_asked, show_stages, no_work, &id_asked);
 
     let conf = cp_conf_read(&at[0]);
     let key_path = if key_part || leaf_part {
@@ -164,6 +177,29 @@ fn cp_main(args: &[String]) -> i32 {
     };
     let key_b = need_bytes(&key_path, "key");
 
+    // `hParOf()` (`cp_verify.cpp:843-851`): the configuration digest of the three public files,
+    // printed as `h_par=` and compared with nothing. Its hash calls are the parent call's own.
+    if let Err(r) = reject_long_text_file(conf.pol.len() as u64) {
+        end_with_refusal(r, "");
+    }
+    if conf.kl.len() < DW as usize {
+        end_with_refusal(Refusal::named("KL-length"), "");
+    }
+    if let Some(l) = &conf.layout {
+        if let Err(r) = reject_long_text_file(l.len() as u64) {
+            end_with_refusal(r, "");
+        }
+    }
+    let kl_bytes = words_bytes(&conf.kl);
+    let mut host_calls = HashCalls::new();
+    let h_par = hex64(
+        &configuration_digest(
+            &[&conf.pol, conf.layout.as_deref().unwrap_or(&[]), &kl_bytes],
+            &mut host_calls,
+        )
+        .w,
+    );
+
     let pol_ver = match cp_policy_word(&conf.pol) {
         Ok(v) => v,
         Err(r) => end_with_refusal(r, ""),
@@ -172,8 +208,14 @@ fn cp_main(args: &[String]) -> i32 {
         end_with_refusal(r, "");
     }
 
+    let mut entry_b: Option<Vec<u8>> = None;
+    let mut request_words: Option<Vec<u32>> = None;
+    let mut y_words: Option<Vec<u32>> = None;
+    let mut odd_statement = false;
+    let mut proof_b: Option<Vec<u8>> = None;
+    let mut entry_number: u32 = 0;
     if leaf_part {
-        let _entry_b = need_bytes(&at[2], "entry");
+        entry_b = Some(need_bytes(&at[2], "entry"));
     } else if !key_part {
         // `cpLengthHeld()` uses the parameter file's `lt` when present. Like C++'s polWord(), the
         // strict parser strips the frame first.
@@ -184,66 +226,699 @@ fn cp_main(args: &[String]) -> i32 {
         }
         cp_length_held(&at[3], 1);
         let (request, odd_request) = must_read_words(&at[2], "request");
-        let (_y, odd_y) = must_read_words(&at[3], "y");
-        if !odd_request && !odd_y {
+        let (y, odd_y) = must_read_words(&at[3], "y");
+        odd_statement = odd_request || odd_y;
+        if !odd_statement {
             cp_policy_held(&policy, &conf.pol, &request);
         }
-        let proof_b = need_bytes(&at[4], "proof");
-        let k = match cp_proof_head(&proof_b, pol_ver) {
+        let proof = need_bytes(&at[4], "proof");
+        let k = match cp_proof_head(&proof, pol_ver) {
             Ok(k) => k,
             Err(r) => end_with_refusal(r, ""),
         };
+        entry_number = k;
         let leaf_path = format!("{}/leaf/{}.bin", at[1], k);
         // C++ uses readWholeFile() here and turns any failure into cp-entry-missing, not into
         // input-unreadable-entry (`cp_verify.cpp:3373-3374`).
-        if read_regular_file(&leaf_path).is_err() {
-            end_with_refusal(Refusal::named("cp-entry-missing"), "");
+        match read_regular_file(&leaf_path) {
+            Ok(b) => entry_b = Some(b),
+            Err(_) => end_with_refusal(Refusal::named("cp-entry-missing"), ""),
         }
+        request_words = Some(request);
+        y_words = Some(y);
+        proof_b = Some(proof);
     }
-    let _ = conf.kl;
-    let _ = conf.layout;
 
-    // Three stages, one process, each with a fresh StageState. C++ forks one child per stage
-    // (`cpStagesRun`, cp_verify.cpp:2670); the default `-j` is 1, so parFor is serial.
-    let stages: &[&str] = if key_part {
-        &["key"]
+    // The stages (`stageOn` in cpMain; `cpStagesRun`, cp_verify.cpp:2670). C++ forks one child
+    // per stage; the port runs them in this process, each on a fresh `StageState`.
+    let few = core::cmp::max(1, threads / 8);
+    let specs: Vec<(StageMode, u32)> = if key_part {
+        vec![(StageMode::Key, threads)]
     } else if leaf_part {
-        &["leaf"]
+        vec![(StageMode::Leaf, threads)]
     } else {
-        &["key", "leaf", "request"]
+        vec![(StageMode::Key, few), (StageMode::Leaf, few), (StageMode::Request, threads)]
     };
-    let mut internal: Option<(&str, String)> = None;
-    for stage in stages {
-        let stage_threads = if key_part || leaf_part || *stage == "request" {
-            threads
-        } else {
-            core::cmp::max(1, threads / 8)
+    let default_policy = PolicyNamed::default();
+    let mut run: Vec<RanStage> = Vec::with_capacity(specs.len());
+    for &(mode, stage_threads) in &specs {
+        let request_mode = mode == StageMode::Request;
+        let files = StageFiles {
+            pol: &conf.pol,
+            layout: conf.layout.as_deref(),
+            kl: &conf.kl,
+            key: &key_b,
+            entry: if mode == StageMode::Key { None } else { entry_b.as_deref() },
+            entry_number: if request_mode { entry_number } else { 0 },
+            request: if request_mode { request_words.as_deref() } else { None },
+            y: if request_mode { y_words.as_deref() } else { None },
+            odd_statement: request_mode && odd_statement,
+            proof: if request_mode { proof_b.as_deref() } else { None },
+            id_asked: &id_asked,
+            asked,
+            quiet,
+            next_token_asked: request_mode && next_token_asked,
+            policy: if request_mode { &policy } else { &default_policy },
         };
         let mut state = StageState::default();
         state.inner_threads = stage_threads as i32;
-        match run_stage_stub(stage) {
-            Ok(()) => {}
-            Err(Refusal::Named(name)) => end_with_refusal(Refusal::Named(name), ""),
-            Err(Refusal::Internal(reason)) => {
-                if internal.is_none() {
-                    internal = Some((stage, reason));
+        let t = Instant::now();
+        let out = run_stage(mode, files, &mut state);
+        run.push(RanStage {
+            name: mode.name(),
+            threads: stage_threads,
+            secs: t.elapsed().as_secs_f64(),
+            status: out.status,
+            text: out.text,
+            calls: out.calls,
+            acct: out.acct,
+        });
+    }
+
+    let good = if key_part {
+        "PART PASSED: key"
+    } else if leaf_part {
+        "PART PASSED: leaf"
+    } else {
+        "YES"
+    };
+    let good_status = if key_part || leaf_part { 3 } else { 0 };
+    stages_run(
+        &run,
+        good,
+        good_status,
+        below_bar,
+        asked,
+        &id_asked,
+        !key_part && !leaf_part,
+        policy.given,
+        show_stages,
+        no_work,
+        &h_par,
+        host_calls,
+        request_words.as_deref().unwrap_or(&[]),
+        entry_number,
+    )
+}
+
+/// One stage's output, as `cpStagesRun` keeps it (`Child`).
+struct RanStage {
+    name: &'static str,
+    threads: u32,
+    secs: f64,
+    status: i32,
+    text: String,
+    calls: u64,
+    acct: Option<Accounting>,
+}
+
+/// The last line of a stage's output, without its line feed (`cpStagesRun`, `last`).
+fn last_text_line(out: &str) -> String {
+    let mut last = out;
+    if let Some(x) = last.strip_suffix('\n') {
+        last = x;
+    }
+    match last.rfind('\n') {
+        Some(nl) => String::from(&last[nl + 1..]),
+        None => String::from(last),
+    }
+}
+
+/// `%g` for the values `asked` takes: whole numbers from 0 to 1000000. C prints the last as
+/// `1e+06`, and the others in digits.
+fn c_g(v: f64) -> String {
+    if v >= 1_000_000.0 {
+        return String::from("1e+06");
+    }
+    format!("{}", v as u64)
+}
+
+/// Reads the `%lf + %u` pair of a stage's work line.
+fn work_pair_of(s: &str) -> Option<(f64, u32)> {
+    let plus = s.find('+')?;
+    let bits: f64 = s[..plus].trim().parse().ok()?;
+    let rest = s[plus + 1..].trim_start();
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    Some((bits, digits.parse().ok()?))
+}
+
+/// What `cpCovered()` returns (`Covered`, cp_verify.cpp:2606-2614).
+struct Covered {
+    line: String,
+    policy: String,
+    fields: String,
+    claim: &'static str,
+    other_kind: bool,
+    kind_taken: bool,
+}
+
+/// `cpCovered()` (`cp_verify.cpp:2968-3007`): the line `covered:` and the fields of the line for
+/// programs, both built from the request and the request stage's line `result:`.
+fn cp_covered(request: &[u32], leaf: u32, result: &str) -> Option<Covered> {
+    if request.len() < 3 {
+        return None;
+    }
+    let t_len = request.len() as u64 - 2;
+    let r = request[t_len as usize] as u64;
+    let e = request[t_len as usize + 1] as u64;
+    if r >= e || e > t_len {
+        return None;
+    }
+    // `v`: the number after " <name>="; false unless 1 to 18 digits, then a space.
+    let field = |name: &str| -> Option<u64> {
+        let key = format!(" {}=", name);
+        let at = result.find(&key)?;
+        let b = result.as_bytes();
+        let mut i = at + key.len();
+        let first = i;
+        let mut v = 0u64;
+        while i < b.len() && b[i].is_ascii_digit() && i - first < 18 {
+            v = 10 * v + (b[i] - b'0') as u64;
+            i += 1;
+        }
+        if i > first && i < b.len() && b[i] == b' ' {
+            Some(v)
+        } else {
+            None
+        }
+    };
+    let c = field("C")?;
+    let theta = field("theta")?;
+    let cap = field("cap")?;
+    let s = field("s")?;
+    let sh = field("sh")?;
+    let st = field("sT")?;
+    let f = field("F")?;
+    let last = core::cmp::min(e, t_len - 1);
+    let kind = policy_kind(c, theta, cap, s, sh, st);
+    let policy = format!(
+        "{} C={} theta={} cap={} s={} sh={}",
+        kind, c, theta, cap, s, sh
+    );
+    let other_kind = r + 1 <= last && !acceptance_policy_is_exact_match(c, theta, cap, sh, st);
+    let claim = if r + 1 > last {
+        "next-token"
+    } else if other_kind {
+        "policy"
+    } else {
+        "exact-match"
+    };
+    let tokens = if r + 1 <= last {
+        format!("{}..{}", r + 1, last)
+    } else {
+        String::from("none")
+    };
+    let y = if e == t_len { "yes" } else { "no" };
+    let fields = format!(
+        "r={} e={} T={} tokens={} y={} policy={} C={} theta={} cap={} s={} sh={} sT={} F={} above-clip={} leaf={}",
+        r,
+        e,
+        t_len,
+        tokens,
+        y,
+        kind,
+        c,
+        theta,
+        cap,
+        s,
+        sh,
+        st,
+        f,
+        above_clip(last - r, c, theta, cap, sh),
+        leaf
+    );
+    let line = format!(
+        "covered: r={} e={} T={} C={} theta={} cap={} s={} sh={} positions={}..{} tokens={} y={} next-token={} policy={} above-clip={} (places in the request, counted from 0; y=yes: the answer is about y too; it is about nothing else; above-clip: so many of the tokens named by tokens= may cost more than C, and such a token may be any token. It is no limit on the tokens that may be any token: one that costs C or less may be any token too where the committed model's logits lie close together, and no verifier sees that. All costs, each counted as at most C, add up to at most theta times the number of these tokens)\n",
+        r,
+        e,
+        t_len,
+        c,
+        theta,
+        cap,
+        s,
+        sh,
+        r,
+        e - 1,
+        tokens,
+        y,
+        if r + 1 == t_len { "yes" } else { "no" },
+        kind,
+        above_clip(last - r, c, theta, cap, sh)
+    );
+    let kind_taken = st + 4 == sh;
+    Some(Covered { line, policy, fields, claim, other_kind, kind_taken })
+}
+
+/// Ends a call under a fault of the verifier's own (`cpNotChecked`, `cp_verify.cpp:2560-2566`).
+fn call_not_checked(how: &str, name: &str) -> i32 {
+    print!("{}", cp_not_checked_lines(how, name));
+    flush_stdout();
+    STATUS_NOT_CHECKED
+}
+
+/// `cpStagesRun()` (`cp_verify.cpp:2655-2964`): joins the stages' outputs and prints the call's
+/// last lines.
+#[allow(clippy::too_many_arguments)]
+fn stages_run(
+    run: &[RanStage],
+    good: &str,
+    good_status: i32,
+    below_bar: bool,
+    asked: f64,
+    id_asked: &str,
+    id_needed: bool,
+    policy_given: bool,
+    show_stages: bool,
+    no_work: bool,
+    h_par: &str,
+    host_calls: HashCalls,
+    request: &[u32],
+    leaf: u32,
+) -> i32 {
+    let id_named = !id_asked.is_empty();
+    // A verification call without -id prints IDHIDDEN in place of the files' ID.
+    let hide_id = id_needed && !id_named;
+    let mut stages_text: Vec<String> = Vec::with_capacity(run.len());
+    let mut no = String::new();
+    let mut no_stage = String::new();
+    let mut no_why = String::new();
+    let mut failed = String::new();
+    let mut failed_name = String::from("internal-stage");
+    let mut causes = String::new();
+    let mut call = Accounting::default();
+    let mut calls_all = 0u64;
+    let mut one_time_assumed = 0u64;
+    let mut counted_all = true;
+    let mut accts_read = 0usize;
+    let mut work_lines = String::new();
+    let mut work_pair = String::new();
+    let mut work_least = 0.0f64;
+    let mut work_stage = false;
+    for (i, st) in run.iter().enumerate() {
+        // RESULTWORD begins this function's own line. A stage's output that has it is not printed.
+        let holds_word = st.text.contains(RESULTWORD);
+        if holds_word && failed.is_empty() {
+            failed = format!(
+                "the output of the stage {} holds the first word of the line for programs, which only the call's closing lines may hold",
+                st.name
+            );
+            failed_name = String::from("internal-result-line");
+        }
+        let last = last_text_line(&st.text);
+        let mut own = st.acct.clone();
+        let sums_read = own.is_some();
+        if let Some(a) = own.as_mut() {
+            // The record as the stage printed it: `acctReadH` reads these two back from the text.
+            a.counted = true;
+            a.calls = st.calls;
+            calls_all += a.calls;
+            counted_all = counted_all && a.counted;
+            if i + 1 < run.len() {
+                one_time_assumed += a.closeness[1];
+            }
+            call = a.clone();
+            accts_read += 1;
+            if !((a.target as f64) >= asked) && failed.is_empty() {
+                failed = format!(
+                    "the target in the record of the stage {} is below the bits asked of the call",
+                    st.name
+                );
+                failed_name = String::from("internal-sums-line");
+            }
+            if (run.len() == 1 || i + 1 < run.len())
+                && (st.status == 3 || st.status == 12)
+                && a.needs_work != (st.status == 12)
+                && failed.is_empty()
+            {
+                failed = format!(
+                    "the status of the stage {} and its record disagree on work",
+                    st.name
+                );
+                failed_name = String::from("internal-sums-line");
+            }
+        }
+        {
+            let shown = if holds_word {
+                String::from("not printed: this output holds the first word of the line for programs\n")
+            } else {
+                st.text.clone()
+            };
+            let own_id = {
+                let s = cp_line_of(&st.text, STAGEIDLINE);
+                if s.len() > HEXW {
+                    String::from(&s[..HEXW])
+                } else {
+                    s
+                }
+            };
+            let shown = if hide_id && own_id.len() == HEXW {
+                shown.replace(&own_id, IDHIDDEN)
+            } else {
+                shown
+            };
+            let mut text = format!(
+                "---- stage {} ---- {} thread(s), {:.3} s\n",
+                st.name, st.threads, st.secs
+            );
+            text.push_str(&shown);
+            if !shown.is_empty() && !shown.ends_with('\n') {
+                text.push('\n');
+            }
+            stages_text.push(text);
+        }
+        // A stage's line "work: <bits> + <work> (...)". A stage that ends WITH WORK must have one.
+        let wl = cp_line_of(&st.text, "work: ");
+        let mut work_read = false;
+        if let Some(par) = wl.find(" (") {
+            if let Some((b, g)) = work_pair_of(&wl[..par]) {
+                if (1..=WORK_BITS_MOST).contains(&g) {
+                    work_read = true;
+                    work_lines.push_str(&format!("stage {}: work: {}\n", st.name, wl));
+                    if work_pair.is_empty() || b < work_least {
+                        work_least = b;
+                        work_pair = String::from(&wl[..par]);
+                    }
                 }
             }
         }
-        drop(state);
+        if st.status == 12 {
+            work_stage = true;
+        }
+        if st.status == 1 && last.starts_with("NO: ") && internal_name(&last[4..]) {
+            if failed.is_empty() {
+                failed = format!("the stage {} met a fault of its own", st.name);
+                failed_name = String::from(&last[4..]);
+            }
+        } else if st.status == 1 && last.starts_with("NO: ") && last.len() > 4 {
+            if no.is_empty() {
+                no = String::from(&last[4..]);
+                no_stage = String::from(st.name);
+                no_why = cp_reason_of(&st.text);
+            }
+        } else if st.status == STATUS_NOT_A_VERIFICATION && last == NOT_A_VERIFICATION_TEXT {
+            let res = cp_line_of(&st.text, "result:");
+            let why = match res.find("(not a verification: ") {
+                Some(c) => String::from(&res[c + 1..]),
+                None => String::from("no cause printed"),
+            };
+            let why = match why.strip_suffix(')') {
+                Some(w) => String::from(w),
+                None => why,
+            };
+            causes.push_str(&format!("stage {}: {}\n", st.name, why));
+        } else if !(st.status == 3
+            && !work_read
+            && last == format!("STAGE PASSED: {}", st.name))
+            && !(st.status == 12
+                && work_read
+                && last == format!("STAGE PASSED WITH WORK: {}", st.name))
+            && failed.is_empty()
+        {
+            let how = if st.status == STATUS_NOT_CHECKED {
+                String::from(" had no memory or could not start a thread")
+            } else {
+                format!(
+                    " ended with status {} and a last line that does not fit it",
+                    st.status
+                )
+            };
+            failed = format!("the stage {}{}", st.name, how);
+        } else if !sums_read && failed.is_empty() && st.status != 1 {
+            failed = format!("the stage {} printed no record of its accounting", st.name);
+            failed_name = String::from("internal-sums-line");
+        }
     }
-    if let Some((stage, reason)) = internal {
-        let how = format!("the stage {} is not implemented in S1 ({})", stage, reason);
-        print!("{}", cp_not_checked_lines(&how, "internal-stage"));
+    if no == "model-statement" {
+        print!("id: these are not the files of the commitment that you named; nothing in them was checked\nid: take the commitment ID from your own record of where it was published, never from these files\nNO: model-statement\n");
         flush_stdout();
-        return 5;
+        return 1;
     }
-    0
+    let may_pass = no.is_empty()
+        && failed.is_empty()
+        && causes.is_empty()
+        && (id_named || !id_needed)
+        && !below_bar
+        && !fp_core::verifier::common::TEST_BUILD
+        && !(no_work && (work_stage || call.needs_work));
+    if may_pass || show_stages {
+        if no.is_empty() {
+            for t in &stages_text {
+                print!("{}", t);
+            }
+        } else {
+            for (i, t) in stages_text.iter().enumerate() {
+                if run[i].status != 1 {
+                    print!("{}", t);
+                }
+            }
+            for (i, t) in stages_text.iter().enumerate() {
+                if run[i].status == 1 {
+                    print!("{}", t);
+                }
+            }
+        }
+    }
+    print!("---- the call ----\n");
+    if !no.is_empty() {
+        print!("refused by the stage {}{}\nNO: {}\n", no_stage, no_why, no);
+        flush_stdout();
+        return 1;
+    }
+    if !failed.is_empty() {
+        return call_not_checked(&failed, &failed_name);
+    }
+    let covered = if id_needed {
+        let result = cp_line_of(&run.last().map(|s| s.text.as_str()).unwrap_or(""), "result:");
+        match cp_covered(request, leaf, &result) {
+            Some(c) => Some(c),
+            None => {
+                return call_not_checked(
+                    "the line on the covered positions could not be formed",
+                    "internal-covered-line",
+                )
+            }
+        }
+    } else {
+        None
+    };
+    if accts_read != run.len() {
+        return call_not_checked(
+            "a stage's record of its accounting is missing",
+            "internal-sums-line",
+        );
+    }
+    // Adds the parent's own hash calls.
+    call.counted = counted_all;
+    call.calls = calls_all + host_calls.total();
+    // The ID is the first stage's, and every stage must have formed the same.
+    let id_hex = {
+        let s = cp_line_of(&run[0].text, STAGEIDLINE);
+        if s.len() > HEXW {
+            String::from(&s[..HEXW])
+        } else {
+            s
+        }
+    };
+    if id_hex.len() != HEXW {
+        return call_not_checked("the first stage printed no ID", "internal-id-two-ways");
+    }
+    for st in run {
+        let other = {
+            let s = cp_line_of(&st.text, STAGEIDLINE);
+            if s.len() > HEXW {
+                String::from(&s[..HEXW])
+            } else {
+                s
+            }
+        };
+        if other != id_hex {
+            return call_not_checked("two stages formed two IDs", "internal-id-two-ways");
+        }
+    }
+    if no_work && causes.is_empty() && work_stage != call.needs_work {
+        return call_not_checked(
+            "the stages' lines on work and the call's record disagree",
+            "internal-sums-line",
+        );
+    }
+    if id_named != !id_asked.is_empty() || (id_named && id_asked != id_hex) {
+        return call_not_checked(
+            "the stages passed under another ID than the caller's",
+            "internal-id-two-ways",
+        );
+    }
+    if id_needed && !id_named {
+        causes.push_str("the call: not the standard parameter form: id-named (the call named no ID: add -id with the commitment ID)\n");
+    }
+    if no_work && (work_stage || call.needs_work) {
+        causes.push_str(&format!(
+            "the call: not the standard parameter form: no-proof-of-work (the call had -no-proof-of-work, and {}{} the parameter file's target only with proof of work counted)\n",
+            call.by_work,
+            if call.by_work == 1 { " round meets" } else { " rounds meet" }
+        ));
+    }
+    // Names the files as a planning call does (blocks/frame/prints.h).
+    let what = if run.len() > 1 {
+        "key, entry and proof"
+    } else if run[0].name == "key" {
+        "the key"
+    } else {
+        "an entry"
+    };
+    print!("{}", print_accounting(&call, what, false, 6));
+    print!("accounting: asked of this call: {} bits\n", c_g(asked));
+    // -key and -leaf print no IDLINE: a committer that copies their output prints at most one.
+    let id_line = if covered.is_some() {
+        format!(
+            "{}{}\n",
+            IDLINE,
+            if hide_id { IDHIDDEN } else { id_hex.as_str() }
+        )
+    } else {
+        String::new()
+    };
+    let leaf_key_line = if run.len() == 1 && run[0].name == "leaf" {
+        "key: NOT CHECKED BY THIS CALL (its table was taken on its form alone; the part-call -key or a whole call checks it)\n"
+    } else {
+        ""
+    };
+    print!(
+        "{}{}id: {}\nh_par={}\n{}weight hiding: NOT CHECKED BY THIS CALL (it rests on how the commitment was made)\n{}{}",
+        causes,
+        id_line,
+        if id_named {
+            "named by the caller and equal"
+        } else {
+            "not compared: the call named none"
+        },
+        h_par,
+        leaf_key_line,
+        covered.as_ref().map(|c| c.line.as_str()).unwrap_or(""),
+        work_lines
+    );
+    let mut most_work = 0u32;
+    for kind in &call.work {
+        for &g in kind {
+            most_work = core::cmp::max(most_work, g);
+        }
+    }
+    let work_line = if call.needs_work {
+        format!(
+            "{}up to {} bits counted in {} round{}; with it the least round has {:.2} bits, without it {:.2} bits",
+            WORKLINE,
+            most_work,
+            call.by_work,
+            if call.by_work == 1 { "" } else { "s" },
+            cut2(call.groups[0].all()),
+            cut2(call.lists.bits)
+        )
+    } else {
+        format!("{}none counted", WORKLINE)
+    };
+    let commitment_line = if covered.is_some() {
+        format!(
+            "{}{} closeness {} on another source than the bound within a third of the distance{}\n",
+            COMMITMENTLINE,
+            one_time_assumed,
+            if one_time_assumed == 1 {
+                "round of the one-time files rests"
+            } else {
+                "rounds of the one-time files rest"
+            },
+            RECORDCLAUSE
+        )
+    } else {
+        String::new()
+    };
+    let result_line = |status: i32| -> String {
+        let Some(c) = covered.as_ref() else {
+            return String::new();
+        };
+        format!(
+            "{} status={} claim={} id={} bits={:.0} work={} work-rounds={} least-round={:.2} least-round-without-work={:.2} commitment-assumed-rounds={} record=1 {} stages=key,leaf,request dw={} build={}\n",
+            RESULTWORD,
+            status,
+            c.claim,
+            if hide_id { IDHIDDEN } else { id_hex.as_str() },
+            asked,
+            if call.needs_work { most_work } else { 0 },
+            if call.needs_work { call.by_work } else { 0 },
+            cut2(call.groups[0].all()),
+            cut2(call.lists.bits),
+            one_time_assumed,
+            c.fields,
+            DW,
+            BUILD_SOURCE_DIGEST
+        )
+    };
+    if !causes.is_empty() || below_bar || fp_core::verifier::common::TEST_BUILD {
+        print!("{}{}\n", commitment_line, work_line);
+        print!("{}", result_line(STATUS_NOT_A_VERIFICATION));
+        print!("{}\n", NOT_A_VERIFICATION_TEXT);
+        flush_stdout();
+        return STATUS_NOT_A_VERIFICATION;
+    }
+    // Status 12 (WITH WORK) and a valid line "work:" must come together.
+    if work_stage != !work_pair.is_empty() {
+        return call_not_checked(
+            "a stage's status and its line on work disagree",
+            "internal-sums-line",
+        );
+    }
+    // The call's record must agree, on `workPair` too. Both bit figures were truncated: within 0.01.
+    if work_stage != call.needs_work || (work_stage && {
+        match work_pair.find(" + ") {
+            Some(plus) => {
+                !((work_least - call.lists.bits).abs() < 0.0101)
+                    || String::from(&work_pair[plus..]) != format!(" + {}", call.lists.work)
+            }
+            None => true,
+        }
+    }) {
+        return call_not_checked(
+            "the stages' lines on work and the call's record disagree",
+            "internal-sums-line",
+        );
+    }
+    // WITHIN LIMITS is only for a caller that passed -policy.
+    if covered.as_ref().map(|c| c.other_kind).unwrap_or(false) && !policy_given {
+        return call_not_checked(
+            "a call without -policy came as far as WITHIN LIMITS",
+            "internal-policy-not-given",
+        );
+    }
+    if covered.is_some() && !covered.as_ref().map(|c| c.kind_taken).unwrap_or(false) {
+        return call_not_checked(
+            "the parameter file's policy is neither exact-match nor clipped-gap, and no earlier check refused it",
+            "internal-policy-kind",
+        );
+    }
+    if let Some(c) = covered.as_ref().filter(|c| c.other_kind) {
+        print!("{}{}\n", commitment_line, work_line);
+        print!("{}", result_line(0));
+        print!("{}{}\n", WITHIN, c.policy);
+        flush_stdout();
+        return 0;
+    }
+    print!("{}{}\n", commitment_line, work_line);
+    print!("{}", result_line(good_status));
+    print!("{}\n", good);
+    flush_stdout();
+    good_status
 }
 
-/// S1 stage body: the proof system arrives in S2.
-fn run_stage_stub(_stage: &str) -> fp_core::refusal::Result<()> {
-    Err(Refusal::internal("not-implemented"))
+/// The little-endian bytes of words, as `KL.bin` holds them (`words_bytes`, run_stage.rs).
+fn words_bytes(w: &[u32]) -> Vec<u8> {
+    let mut o = Vec::with_capacity(4 * w.len());
+    for &x in w {
+        for i in 0..4 {
+            o.push((x >> (8 * i)) as u8);
+        }
+    }
+    o
 }
 
 /// A `-plan request` option's value (`cpPlanMain`'s `value` lambda, cp_verify.cpp:3173-3178): the
@@ -411,103 +1086,6 @@ fn decimal(arg: &str, max: u32) -> Option<u32> {
     }
 }
 
-/// The caller's `-policy` value (`PolicyNamed`, `vf_common.h:642-682`).
-// `kind` and `s` are read by cpPolicyHeld() in S2 (`vf_common.h:674-681`).
-#[allow(dead_code)]
-#[derive(Default)]
-struct PolicyNamed {
-    given: bool,
-    kind: String,
-    c: u64,
-    theta: u64,
-    cap: u64,
-    s: u64,
-    sh: u64,
-}
-
-/// `policyNamedRead()` (`vf_common.h:688-704`).
-fn policy_named_read(text: &str) -> Option<PolicyNamed> {
-    let comma = text.find(',')?;
-    let kind = &text[..comma];
-    if kind != "exact-match" && kind != "clipped-gap" {
-        return None;
-    }
-    let b = text.as_bytes();
-    let mut i = comma + 1;
-    let mut vals = [0u64; 5];
-    for (k, slot) in vals.iter_mut().enumerate() {
-        let first = i;
-        while i < b.len() && b[i].is_ascii_digit() {
-            *slot = 10 * *slot + (b[i] - b'0') as u64;
-            i += 1;
-        }
-        if i == first || i - first > 10 || (b[first] == b'0' && i - first > 1) {
-            return None;
-        }
-        if k < 4 {
-            if i >= b.len() || b[i] != b',' {
-                return None;
-            }
-            i += 1;
-        } else if i != b.len() {
-            return None;
-        }
-    }
-    Some(PolicyNamed {
-        given: true,
-        kind: String::from(kind),
-        c: vals[0],
-        theta: vals[1],
-        cap: vals[2],
-        s: vals[3],
-        sh: vals[4],
-    })
-}
-
-/// `policyEmpty()` (`vf_common.h:660-671`).
-fn policy_empty(n: u64, c: u64, theta: u64, cap: u64, sh: u64) -> u8 {
-    let least = if sh < 63 { 1u64 << sh } else { u64::MAX };
-    if c < least {
-        1
-    } else if theta < least {
-        2
-    } else if theta > c {
-        3
-    } else if theta == c && n != 0 && n <= cap {
-        4
-    } else {
-        0
-    }
-}
-
-/// `acceptancePolicyIsExactMatch()` (`vf_common.h:615-617`).
-fn acceptance_policy_is_exact_match(c: u64, theta: u64, cap: u64, sh: u64, st: u64) -> bool {
-    sh < 63 && c == theta && theta == (1u64 << sh) && cap == 0 && st + 4 == sh
-}
-
-/// `policyKind()` (`vf_common.h:623-627`).
-fn policy_kind(c: u64, theta: u64, cap: u64, s: u64, sh: u64, st: u64) -> &'static str {
-    if acceptance_policy_is_exact_match(c, theta, cap, sh, st) {
-        "exact-match"
-    } else if st + 4 == sh {
-        "clipped-gap"
-    } else if st == s {
-        "log-probability"
-    } else {
-        "another-table"
-    }
-}
-
-/// `PolicyNamed::is()` (`vf_common.h:674-681`).
-fn policy_is(p: &PolicyNamed, c: u64, theta: u64, cap: u64, s: u64, sh: u64, st: u64) -> bool {
-    p.kind == policy_kind(c, theta, cap, s, sh, st)
-        && p.c == c
-        && p.theta == theta
-        && p.cap == cap
-        && p.s == s
-        && p.sh == sh
-}
-
 /// `cpPolicyHeld()` (`cp_verify.cpp:3254-3273`): compares the caller's policy (or `exact-match`)
 /// with the parameter file and the request. A missing or malformed line returns silently; a stage
 /// rejects such a file later.
@@ -528,7 +1106,7 @@ fn cp_policy_held(p: &PolicyNamed, pol: &[u8], request: &[u32]) {
             policy_kind(c, theta, cap, s, sh, st)
         ));
     }
-    if p.given && !policy_is(p, c, theta, cap, s, sh, st) {
+    if p.given && !p.is(c, theta, cap, s, sh, st) {
         policy_refused("the option -policy names another kind of policy or another C, theta, cap, s or sh than the parameter file sets");
     }
     let Some(lt) = pol_word_u64(pol, "lt") else { return };

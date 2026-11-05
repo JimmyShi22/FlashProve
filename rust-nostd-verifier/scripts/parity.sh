@@ -5,10 +5,10 @@
 #   1. the stored C++ goldens still match a C++ reference built from this checkout;
 #   2. the Rust host matches C++ byte for byte (stdout, stderr, exit status) on the S1 cases:
 #      command-line errors, unreadable inputs and file/header rejections;
-#   3. the S1 stage stub never prints YES.
+#   3. the Rust host matches the accepted example's 105-line golden.
 #
-# The full accepted-example / negative-control parity is S3. Here the C++ side of those is
-# checked against the stored goldens, and the Rust side is only required to stay NOT CHECKED.
+# The C++ side of the accepted example and of the two negative controls is checked here against
+# the stored goldens; the Rust side of all three is S3's gate, scripts/parity_e2e.sh.
 #
 # Usage: scripts/parity.sh            (from anywhere)
 #        CPP_BIN=/path/to/cp_verify scripts/parity.sh
@@ -164,17 +164,20 @@ else
   diff -u "$here/fixtures/golden_negative_wrong_id.txt" "$tmp/wrong.out" | head -20
 fi
 
-# 5. S1 safety: the Rust stub must never print YES.
-"$RUST" "$CONFIG" "$IVK" "$REQ" "$Y" "$PROOF" -id "$ID" -q >"$tmp/stub.out" 2>&1
-scode=$?
-if [ "$scode" -eq 5 ] &&
-  [ "$(tail -n 1 "$tmp/stub.out")" = "NOT CHECKED: internal-stage" ] &&
-  ! grep -qx "YES" "$tmp/stub.out"; then
+# 5. The Rust host on the accepted example: the same 105 lines as the golden (timings
+#    normalized) and a YES. The negative controls are scripts/parity_e2e.sh's.
+"$RUST" "$CONFIG" "$IVK" "$REQ" "$Y" "$PROOF" -id "$ID" -q >"$tmp/rust_acc.out" 2>"$tmp/rust_acc.err"
+rcode=$?
+normalize_timings "$tmp/rust_acc.out" >"$tmp/rust_acc.norm"
+if [ "$rcode" -eq 0 ] &&
+  [ ! -s "$tmp/rust_acc.err" ] &&
+  [ "$(tail -n 1 "$tmp/rust_acc.out")" = "YES" ] &&
+  cmp -s "$tmp/acc.golden" "$tmp/rust_acc.norm"; then
   ok
-  echo "PASS Rust stage stub: NOT CHECKED, no YES (full parity is S3)"
+  echo "PASS Rust host on the accepted example (against golden_stdout.txt)"
 else
-  bad "Rust stage stub printed an unexpected ending"
-  tail -5 "$tmp/stub.out"
+  bad "Rust host differs on the accepted example"
+  diff -u "$tmp/acc.golden" "$tmp/rust_acc.norm" | head -20
 fi
 
 echo "parity: $pass passed, $fail failed"
