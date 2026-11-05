@@ -12,8 +12,11 @@
 #      fixtures/subproof_vectors.txt: the engine, packing, smallness planning, lookup forest, PSC
 #      row and the sumcheck slot counts;
 #   6. the Rust replay of that tool, and the transcript-driven sub-proof tests on a real chain;
-#   7. the whole workspace builds and its tests pass;
-#   8. fp-core is scanned for `use std`, `extern crate std` and `static mut`.
+#   7. the request frame: the C++ tool proves the toy requests of blocks/iop/tests/req_rows_cases.h,
+#      and its verdicts (honest, spoiled, false target, a missing close or moment) and fault names
+#      are replayed by the Rust frame (ReqFrame, req_row, ChainCheck);
+#   8. the whole workspace builds and its tests pass;
+#   9. fp-core is scanned for `use std`, `extern crate std` and `static mut`.
 set -o pipefail
 
 here=$(cd "$(dirname "$0")/.." && pwd) || exit 1
@@ -261,6 +264,33 @@ if cargo test --manifest-path "$here/Cargo.toml" -p fp-host --test context_vecto
 else
   bad "Rust context_vectors"
   tail -30 "$tmp/context_vectors.log"
+fi
+
+echo "parity_subproof: building req_chain_vectors"
+if clang++ -O2 -std=c++17 -pthread -Iverifier/src -Iblocks -Iprover -DBLK_FIELD=2 \
+  -DBLK_COUNT_HASH_CALLS=1 -DSERVING_BUILD=1 -DDIGEST_WORDS=8 \
+  -DVF_SOURCE_DIGEST='"93afdaf592393a54ebd17b681d1c03295eb883f0161ff0e6ab872a3b39939595"' \
+  -o "$tmp/req_chain_vectors" "$here/scripts/cpp_vectors/req_chain_vectors.cpp"; then
+  if "$tmp/req_chain_vectors" >"$tmp/req_chain_vectors.txt"; then
+    if cmp -s "$tmp/req_chain_vectors.txt" "$here/fixtures/req_chain_vectors.txt"; then
+      ok "req_chain_vectors: output matches fixtures/req_chain_vectors.txt"
+    else
+      bad "req_chain_vectors: output differs from fixtures/req_chain_vectors.txt"
+      diff -u "$here/fixtures/req_chain_vectors.txt" "$tmp/req_chain_vectors.txt" | head -20
+    fi
+  else
+    bad "req_chain_vectors: C++ run"
+  fi
+else
+  bad "req_chain_vectors: C++ build"
+fi
+
+if cargo test --manifest-path "$here/Cargo.toml" -p fp-host --test req_chain_vectors \
+  >"$tmp/req_chain_vectors.log" 2>&1; then
+  ok "Rust req_chain_vectors"
+else
+  bad "Rust req_chain_vectors"
+  tail -30 "$tmp/req_chain_vectors.log"
 fi
 
 echo "parity_subproof: cargo build --workspace"

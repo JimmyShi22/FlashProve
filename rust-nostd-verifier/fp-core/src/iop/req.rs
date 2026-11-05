@@ -8,23 +8,32 @@
 //! single row (FOLD), and re-encodes that row as the carrying oracle message that the next
 //! segment sends in its first prover message.
 //!
-//! `ReqSizes`, `ReqSubPlan` and `req_plan()` (req.h:306-407) are ported. Not ported: the
-//! `ReqFrame`, `ReqProver`, `ReqVerifier`, `ReqSubProver`, `ReqSubVerifier` classes
-//! (req.h:434-791), which need the prover and verifier contexts, SEND, CS and IOPP entry points.
+//! `ReqSizes`, `ReqSubPlan` and `req_plan()` (req.h:306-407) are ported, and the verifier's side
+//! of the frame: `ReqFrame` with `req_first()`, `req_later()`, `req_close()` and `req_finish()`
+//! (req.h:434-732, `ReqVerifier`). Not ported: `ReqProver`, `ReqSubProver` and `ReqSubVerifier`
+//! (the no_std verifier has no prover), and the test-only `req_verify()`.
 
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 
-use super::context::{tree_sizes, OracleNotice};
-use super::cs::{Cut, KeptTarget, SwitchTarget};
+use super::bat;
+use super::context::{tree_sizes, OracleNotice, VerifierContext};
+use super::cs::{cs_sigma_verify, Cut, KeptTarget, Switched, SwitchTarget};
 use super::foldeq::E_DEGREE;
-use super::fold::fold_mask_notice;
+use super::fold::{fold_mask_notice, fold_verify, FoldMask};
 use super::fold_algebra::fold_mask_columns;
-use super::iopp::{iopp_fault, iopp_fold_shape, iopp_sized_fault, IoppChoice, IoppStage};
-use super::relation::{CodeId, Codes, GroupLayout, OracleShape, Part};
+use super::iopp::{iopp_fault, iopp_fold_shape, iopp_sized_fault, iopp_verify, IoppChoice, IoppStage};
+use super::relation::{
+    CodeId, Codes, GroupId, GroupLayout, OracleId, OracleShape, Part, Statement, NONE_ID,
+};
+use super::send::{send_verify, AnswersRound};
 use super::send_pad::sample_cube;
+use super::single_rows::SingleRows;
 use crate::chain::public::PublicBytes;
 use crate::code::code::CODE_MOST_LOG_N;
+use crate::field::ext::E;
+use crate::hash::calls::HashCalls;
 use crate::iop::message::Writer;
 use crate::numbers::blocks::{
     plan_bat, plan_fold, plan_iopp, plan_loc, plan_none, plan_scalars, plan_send, GroupSize,
@@ -32,7 +41,7 @@ use crate::numbers::blocks::{
 };
 use crate::numbers::codes::ceil_log2;
 use crate::numbers::plan::Plan;
-use crate::numbers::round_names::R_REPLY;
+use crate::numbers::round_names::{R_BAT, R_REPLY};
 use crate::numbers::setting::Scope;
 
 /// One oracle message of a segment (`ReqMessage`, req.h:51-56). `life` > 0: later segments read
@@ -773,6 +782,300 @@ pub fn req_plan(
         plan_fold(p, &where_, &g, 0);
         before = where_;
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The frame, as the verifier runs it
+// ---------------------------------------------------------------------------------------------------------------------
+
+/// Where the frame is in its sequence (`ReqFrame::Next`, req.h:468).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Next {
+    First,
+    LaterOrClose,
+    Done,
+}
+
+/// What both sides keep (`ReqFrame`, req.h:434-498), verifier side. The frame's calls are
+/// `req_first()`, `req_later()`, `req_close()` and `req_finish()` below, the verifier's methods
+/// (`ReqVerifier`, req.h:657-732) with the context passed in place of the C++ member.
+pub struct ReqFrame {
+    shape: ReqShape,
+    groups: Vec<ReqGroup>,
+    next: Next,
+    link: usize,
+    /// The next commit point of the present segment.
+    moment: u32,
+    group: GroupId,
+    kept_before: Vec<OracleId>,
+    at_start: Vec<OracleId>,
+    own: Vec<OracleId>,
+    plain: Vec<E>,
+    /// Of the present segment's closing.
+    mask: FoldMask,
+    /// What the last closing has left.
+    rows: SingleRows,
+}
+
+impl ReqFrame {
+    /// `ReqFrame(const Codes&, const ReqShape&, unsigned)` (req.h:463-467). `samples`: the
+    /// number of answers to a sample in the chain's plan.
+    pub fn new(codes: &Codes, shape: ReqShape, samples: u32) -> Self {
+        let groups = req_groups(&shape);
+        if let Some(fault) = req_fault(codes, &shape) {
+            panic!("{}", fault);
+        }
+        assert!(
+            shape.answers == samples,
+            "request: the shape has another number of answers to a sample than the plan's setting"
+        );
+        ReqFrame {
+            shape,
+            groups,
+            next: Next::First,
+            link: 0,
+            moment: 0,
+            group: NONE_ID,
+            kept_before: Vec::new(),
+            at_start: Vec::new(),
+            own: Vec::new(),
+            plain: Vec::new(),
+            mask: FoldMask::default(),
+            rows: SingleRows::default(),
+        }
+    }
+
+    pub fn shape(&self) -> &ReqShape {
+        &self.shape
+    }
+    /// Of the present segment.
+    pub fn group(&self) -> GroupId {
+        self.group
+    }
+    /// The present segment, counted from 0.
+    pub fn link(&self) -> usize {
+        self.link
+    }
+    /// The kept oracle messages of earlier segments as sent again in the present one, in the
+    /// order of sending.
+    pub fn kept_before(&self) -> &[OracleId] {
+        &self.kept_before
+    }
+    pub fn at_start(&self) -> &[OracleId] {
+        &self.at_start
+    }
+    /// The present segment's plain scalars, until the next `req_first()`.
+    pub fn plain(&self) -> &[E] {
+        &self.plain
+    }
+    pub fn next(&self) -> Next {
+        self.next
+    }
+
+    /// The oracle message that was sent as number `message` of segment `born`, as the present
+    /// segment has it (`ReqFrame::where`, req.h:448-459). The names are `where` in C++; `where`
+    /// is a Rust keyword.
+    pub fn where_(&self, born: usize, message: usize) -> OracleId {
+        assert!(
+            self.next == Next::LaterOrClose,
+            "request: no link is under way: its first prover message has not gone, or it is closed"
+        );
+        if born == self.link {
+            assert!(
+                message < self.own.len(),
+                "request: this oracle message of the link has not been sent yet"
+            );
+            return self.own[message];
+        }
+        let list = &self.groups[self.link].born;
+        for (i, b) in list.iter().enumerate() {
+            if *b == (born, message) {
+                return self.kept_before[i];
+            }
+        }
+        panic!("request: the present link does not read this oracle message");
+    }
+
+    /// `fold_shape()` (req.h:469-471).
+    pub fn fold_shape(&self, l: usize, layout: GroupLayout) -> super::fold::FoldShape {
+        iopp_fold_shape(
+            &IoppStage {
+                code: self.shape.code,
+                mask_code: self.shape.mask_code,
+                k: self.groups[l].k,
+                h: self.groups[l].h,
+            },
+            layout,
+        )
+    }
+
+    /// `at_moment()` (req.h:472-477). The C++ returns pointers into the shape; the port clones
+    /// the (small) messages so that the frame can borrow itself mutably afterwards.
+    fn at_moment(&self, moment: u32) -> Vec<ReqMessage> {
+        self.shape.link[self.link]
+            .messages
+            .iter()
+            .filter(|x| x.moment == moment)
+            .cloned()
+            .collect()
+    }
+
+    /// `join()` (req.h:478-481).
+    fn join(&mut self, S: &mut Statement, sent: &[ReqMessage], ids: &[OracleId]) {
+        for (i, m) in sent.iter().enumerate() {
+            S.join(self.group, ids[i], m.life > 0);
+            self.own.push(ids[i]);
+        }
+    }
+
+    /// `begin_link()` (req.h:482-486).
+    fn begin_link(&mut self, S: &mut Statement) {
+        let name = if self.link < self.shape.link.len() {
+            self.shape.link[self.link].name.clone()
+        } else {
+            String::from("last group")
+        };
+        self.group = S.new_group(name, self.shape.code, self.shape.mask_code);
+        self.moment = 1;
+        self.own.clear();
+    }
+}
+
+/// `ReqVerifier::notices()` (req.h:726-730).
+fn notices(own: &[ReqMessage]) -> Vec<OracleNotice> {
+    own.iter().map(|m| OracleNotice { shape: m.shape.clone(), leaf_class: m.leaf_class }).collect()
+}
+
+/// `ReqVerifier::first()` (req.h:661-687). `ids` receives the ids of the segment's oracle
+/// messages of commit point 0.
+pub fn req_first(
+    V: &mut VerifierContext<'_, '_, '_, '_>,
+    frame: &mut ReqFrame,
+    ids: &mut Vec<OracleId>,
+    calls: &mut HashCalls,
+) -> bool {
+    assert!(
+        frame.next == Next::First && frame.link < frame.shape.link.len(),
+        "request: a link's first prover message is not due"
+    );
+    let own = frame.at_moment(0);
+    let mut with = notices(&own);
+    with.push(fold_mask_notice(&frame.fold_shape(frame.link, GroupLayout::default())));
+    if frame.link == 0 {
+        with.extend(frame.shape.at_start.iter().cloned());
+    }
+    frame.begin_link(&mut V.st);
+    frame.plain = vec![E::zero(); frame.shape.link[frame.link].plain as usize];
+    for x in frame.plain.iter_mut() {
+        if !V.ch.recv_e(x) {
+            return false;
+        }
+    }
+    if !frame.plain.is_empty() {
+        V.ch.close_empty(R_REPLY, calls);
+    }
+    ids.clear();
+    if frame.link == 0 {
+        let (good, got) = send_verify(V, &with, AnswersRound::Own, calls);
+        *ids = got;
+        if !good {
+            return false;
+        }
+    } else {
+        let mut s = Switched::default();
+        let target = frame.groups[frame.link].target.clone();
+        if !cs_sigma_verify(V, &frame.rows, &target, frame.group, &with, &mut s, calls) {
+            return false;
+        }
+        frame.kept_before = s.kept;
+        *ids = s.with;
+    }
+    frame.mask = FoldMask::default();
+    frame.mask.sent_as(ids[own.len()]);
+    frame.at_start.extend_from_slice(&ids[own.len() + 1..]);
+    ids.truncate(own.len());
+    frame.join(&mut V.st, &own, ids);
+    frame.next = Next::LaterOrClose;
+    true
+}
+
+/// `ReqVerifier::later()` (req.h:689-695).
+pub fn req_later(
+    V: &mut VerifierContext<'_, '_, '_, '_>,
+    frame: &mut ReqFrame,
+    ids: &mut Vec<OracleId>,
+    calls: &mut HashCalls,
+) -> bool {
+    assert!(
+        frame.next == Next::LaterOrClose
+            && frame.moment < frame.shape.link[frame.link].moments(),
+        "request: the link has no further moment"
+    );
+    let own = frame.at_moment(frame.moment);
+    frame.moment += 1;
+    let (good, got) = send_verify(V, &notices(&own), AnswersRound::Own, calls);
+    *ids = got;
+    if !good {
+        return false;
+    }
+    frame.join(&mut V.st, &own, ids);
+    true
+}
+
+/// `ReqVerifier::close()` (req.h:697-712).
+pub fn req_close(
+    V: &mut VerifierContext<'_, '_, '_, '_>,
+    frame: &mut ReqFrame,
+    calls: &mut HashCalls,
+) -> bool {
+    assert!(
+        frame.next == Next::LaterOrClose
+            && frame.moment == frame.shape.link[frame.link].moments(),
+        "request: moments of the link are missing"
+    );
+    let input = V.st.begin_run(frame.group);
+    assert!(
+        input.layout.k == frame.groups[frame.link].k && input.layout.h == frame.groups[frame.link].h,
+        "request: the group is not the planned one"
+    );
+    let f = frame.fold_shape(frame.link, input.layout.clone());
+    let theta = V.ch.close_algebraic(R_BAT, calls).draw(calls);
+    V.ch.require_rows(input.rows().len() as u64);
+    let row = bat::combine(&V.st, frame.group, input, theta);
+    V.note("REQ: the group row's target", row.target);
+    let mask = core::mem::take(&mut frame.mask);
+    if !fold_verify(V, &f, row, mask, &mut frame.rows, calls) {
+        return false;
+    }
+    V.note("REQ: FOLD's target", frame.rows.target);
+    frame.mask = FoldMask::default();
+    frame.link += 1;
+    frame.next = Next::First;
+    V.ch.ok()
+}
+
+/// `ReqVerifier::finish()` (req.h:714-723).
+pub fn req_finish(
+    V: &mut VerifierContext<'_, '_, '_, '_>,
+    frame: &mut ReqFrame,
+    calls: &mut HashCalls,
+) -> bool {
+    assert!(
+        frame.next == Next::First && frame.link == frame.shape.link.len(),
+        "request: links are missing"
+    );
+    frame.begin_link(&mut V.st);
+    let mut s = Switched::default();
+    let with = [fold_mask_notice(&frame.fold_shape(frame.link, GroupLayout::default()))];
+    let target = frame.groups[frame.link].target.clone();
+    if !cs_sigma_verify(V, &frame.rows, &target, frame.group, &with, &mut s, calls) {
+        return false;
+    }
+    frame.mask = FoldMask::default();
+    frame.mask.sent_as(s.with[0]);
+    frame.next = Next::Done;
+    let mask = core::mem::take(&mut frame.mask);
+    iopp_verify(V, frame.group, &frame.shape.last, frame.shape.choice, mask, calls)
 }
 
 #[cfg(test)]

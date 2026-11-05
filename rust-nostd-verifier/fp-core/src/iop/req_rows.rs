@@ -6,18 +6,21 @@
 //! messages (`LaidMatrix`, laid.h). Prover and verifier share the layout, which is input to a
 //! verifier; the verifier must call `req_layout_fault()` first.
 //!
-//! Not ported yet: `ReqTerm`, `ReqEquation` and `ReqRows` (req_rows.h:104-169). They build a
-//! segment's claim through `Statement` and `ReqFrame` (`ReqFrame::where()`), which wait for the
-//! frame and context ports.
+//! The verifier also builds each segment's linear claim from the segment's equation
+//! (`req_row()`, req_rows.h:104-169, the `ReqRows` class). The C++ class keeps references to the
+//! context, frame and layout; the port passes them in, so `ChainCheck` can hold one mutable
+//! verifier context without a self-reference.
 
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use super::laid::{laid_ok, LaidMatrix};
-use super::relation::{Codes, OracleShape, Part};
-use super::req::ReqShape;
+use super::laid::{laid_form, laid_ok, LaidMatrix};
+use super::relation::{Codes, OracleShape, Part, Row, Statement};
+use super::req::{ReqFrame, ReqShape};
 use super::send_pad::send_pad;
 use crate::chain::public::PublicBytes;
+use crate::field::ext::E;
+use crate::iop::laid::IndexWeights;
 use crate::iop::message::Writer;
 use crate::numbers::codes::ceil_log2;
 
@@ -190,6 +193,97 @@ pub fn req_layout_fault(codes: &Codes, s: &ReqShape, layout: &ReqLayout) -> Opti
         }
     }
     None
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// A segment's equation
+// ---------------------------------------------------------------------------------------------------------------------
+
+/// One term: the weight `scale * on_rows[i] * on_columns[c]` on element `(i, c)` of the array
+/// `array` (`ReqTerm`, req_rows.h:104-110).
+#[derive(Clone, Debug)]
+pub struct ReqTerm {
+    /// The segment that sent the array: the current one or an earlier one.
+    pub born: usize,
+    pub array: String,
+    pub scale: E,
+    /// At most one of the two is a written-out vector.
+    pub on_rows: IndexWeights,
+    pub on_columns: IndexWeights,
+}
+
+impl Default for ReqTerm {
+    /// The C++ member defaults (req_rows.h:106-109): `scale` is one.
+    fn default() -> Self {
+        ReqTerm {
+            born: 0,
+            array: String::new(),
+            scale: E::one(),
+            on_rows: IndexWeights::default(),
+            on_columns: IndexWeights::default(),
+        }
+    }
+}
+
+/// Sum of `terms` + sum over i of `on_masks[i] * (mask entry i)` = `target` (`ReqEquation`,
+/// req_rows.h:111-116).
+#[derive(Clone, Debug, Default)]
+pub struct ReqEquation {
+    pub terms: Vec<ReqTerm>,
+    /// Coefficients on the first entries of the segment's mask row.
+    pub on_masks: Vec<E>,
+    /// Public.
+    pub target: E,
+}
+
+/// Builds a segment's linear claim (`ReqRows::row()`, req_rows.h:140-163). The caller adds it to
+/// the segment's group (`frame.group()`). The process ends if an array's oracle message has not
+/// been sent or the current segment cannot read it; that is for a program fault, not a bad proof.
+pub fn req_row(frame: &ReqFrame, layout: &ReqLayout, S: &mut Statement, eq: &ReqEquation) -> Row {
+    let shape = frame.shape();
+    let mut row = Row::plain(alloc::format!(
+        "equation of {}",
+        shape.link[frame.link()].name
+    ));
+    for t in &eq.terms {
+        let a = match layout.find(t.born, &t.array) {
+            Some(a) => a,
+            None => panic!("request: an equation names an array that the layout does not have"),
+        };
+        let o = frame.where_(t.born, a.message);
+        row.add_form(
+            o,
+            laid_form(
+                &a.laid.blocks,
+                S.row_bits(o, Part::Main),
+                S.place_bits(o, Part::Main),
+                &t.on_rows,
+                &t.on_columns,
+                t.scale,
+            ),
+        );
+    }
+    if !eq.on_masks.is_empty() {
+        let messages = &shape.link[frame.link()].messages;
+        let mut m = 0usize;
+        while m < messages.len() && messages[m].shape.mask_rows == 0 {
+            m += 1;
+        }
+        assert!(
+            m < messages.len() && messages[m].shape.mask_rows == 1,
+            "request: coefficients on a mask row, and the link has not one"
+        );
+        let o = frame.where_(frame.link(), m);
+        let taken = S.masks(o).take_n(eq.on_masks.len()); // used up
+        assert!(
+            taken.first().unwrap().index() == 0
+                && taken.last().unwrap().index() + 1 == taken.len() as u32,
+            "request: entries of the link's mask row were taken before its equation names them by number"
+        );
+        row.add_run(o, Part::Mask, 0, 1, eq.on_masks.clone());
+    }
+    row.target = eq.target;
+    row
 }
 
 #[cfg(test)]
