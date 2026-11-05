@@ -278,6 +278,7 @@ fn cp_main(args: &[String]) -> i32 {
             asked,
             quiet,
             next_token_asked: request_mode && next_token_asked,
+            plan_only: false,
             policy: if request_mode { &policy } else { &default_policy },
         };
         let mut state = StageState::default();
@@ -933,8 +934,8 @@ fn plan_take<'a>(args: &'a [String], into: &mut Option<&'a str>, i: &mut usize) 
 }
 
 /// `cpPlanMain()` (`cp_verify.cpp:3120-3218`): the same usage, file reads and rejections as C++.
-/// Where C++ would run a stage and print a plan (exit 4), the port still ends NOT CHECKED: the
-/// planners and `configure` are not ported yet, and the stub must never print YES.
+/// `-plan id` and `-plan accounting` run the stage and print what C++ prints (exit 4). `-plan
+/// arrays` (the segment array listing) and `-plan request` are not ported and end NOT CHECKED.
 fn plan_main(args: &[String]) -> i32 {
     if args.len() < 3 {
         usage("-plan wants id, request, accounting or arrays");
@@ -944,9 +945,32 @@ fn plan_main(args: &[String]) -> i32 {
         if args.len() != 5 {
             usage("-plan id wants exactly <config folder> <key.bin>");
         }
-        let _conf = cp_conf_read(&args[3]);
-        let _key = need_bytes(&args[4], "key");
-        return plan_stub();
+        let conf = cp_conf_read(&args[3]);
+        let key_b = need_bytes(&args[4], "key");
+        let policy = PolicyNamed::default();
+        let files = StageFiles {
+            pol: &conf.pol,
+            layout: conf.layout.as_deref(),
+            kl: &conf.kl,
+            key: &key_b,
+            entry: None,
+            entry_number: 0,
+            request: None,
+            y: None,
+            odd_statement: false,
+            proof: None,
+            id_asked: "",
+            asked: 0.0,
+            quiet: true,
+            next_token_asked: false,
+            plan_only: true,
+            policy: &policy,
+        };
+        let mut state = StageState::default();
+        let out = run_stage(StageMode::PlanId, files, &mut state);
+        print!("{}", out.text);
+        flush_stdout();
+        return out.status;
     }
     if what == "accounting" || what == "arrays" {
         if args.len() != 5 || decimal(&args[4], 1_000_000).is_none() {
@@ -955,10 +979,15 @@ fn plan_main(args: &[String]) -> i32 {
                 ASKED_FORM
             ));
         }
+        if what == "arrays" {
+            // The segment array listing (`in.arraysAsked`, vf_segments.inc:163) is not ported.
+            return plan_stub();
+        }
+        let asked = decimal(&args[4], 1_000_000).unwrap() as f64;
         let conf = cp_conf_read(&args[3]);
-        // A made-up request: T tokens 0, with r = 0 and e = T. If `lt` is missing or above 20 the
+        // A made-up request: T tokens 0, then r = 0 and e = T. If `lt` is missing or above 20 the
         // request stays empty; the stage rejects such a parameter file.
-        let _request = match pol_word_u64(&conf.pol, "lt") {
+        let request = match pol_word_u64(&conf.pol, "lt") {
             Some(lt) if lt <= 20 => {
                 let mut r = vec![0u32; (1usize << lt) + 2];
                 let t = 1u32 << lt;
@@ -967,8 +996,31 @@ fn plan_main(args: &[String]) -> i32 {
             }
             _ => Vec::new(),
         };
-        let _y = vec![0u32];
-        return plan_stub();
+        let y = vec![0u32];
+        let policy = PolicyNamed::default();
+        let files = StageFiles {
+            pol: &conf.pol,
+            layout: conf.layout.as_deref(),
+            kl: &conf.kl,
+            key: &[],
+            entry: None,
+            entry_number: 0,
+            request: Some(&request),
+            y: Some(&y),
+            odd_statement: false,
+            proof: None,
+            id_asked: "",
+            asked,
+            quiet: true,
+            next_token_asked: false,
+            plan_only: true,
+            policy: &policy,
+        };
+        let mut state = StageState::default();
+        let out = run_stage(StageMode::Request, files, &mut state);
+        print!("{}", out.text);
+        flush_stdout();
+        return out.status;
     }
     if what != "request" {
         usage("-plan wants id, request, accounting or arrays");
@@ -1031,9 +1083,9 @@ fn plan_main(args: &[String]) -> i32 {
     plan_stub()
 }
 
-/// The safe ending where a planning stage would print its plan.
+/// The safe ending where a planning mode that is not ported would print its plan.
 fn plan_stub() -> i32 {
-    let how = "-plan is not implemented in S2b-4 yet";
+    let how = "-plan arrays and -plan request are not implemented yet";
     print!("{}", cp_not_checked_lines(how, "internal-stage"));
     flush_stdout();
     5
