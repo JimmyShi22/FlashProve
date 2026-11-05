@@ -324,7 +324,7 @@ else
   bad "layers_plan_vectors: C++ build"
 fi
 
-for t in layers_plan_vectors head_plan_vectors; do
+for t in layers_plan_vectors head_plan_vectors layers_run_tests; do
   if cargo test --manifest-path "$here/Cargo.toml" -p fp-host --test "$t" \
     >"$tmp/$t.log" 2>&1; then
     ok "Rust $t"

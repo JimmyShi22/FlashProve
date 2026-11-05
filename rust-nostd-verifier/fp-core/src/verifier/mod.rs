@@ -9,6 +9,7 @@ pub mod common;
 pub mod engine;
 pub mod head_plan;
 pub mod head_rounds;
+pub mod layers_check;
 pub mod layers_plan;
 pub mod layers_rounds;
 pub mod lookup;
