@@ -179,6 +179,35 @@ for t in attention_vectors attention_plan_vectors attention_run_tests; do
   fi
 done
 
+echo "parity_subproof: building weights_vectors"
+if clang++ -O2 -std=c++17 -pthread -Iverifier/src -Iblocks -Iprover -DBLK_FIELD=2 \
+  -DBLK_COUNT_HASH_CALLS=1 -DSERVING_BUILD=1 -DDIGEST_WORDS=8 \
+  -DVF_SOURCE_DIGEST='"93afdaf592393a54ebd17b681d1c03295eb883f0161ff0e6ab872a3b39939595"' \
+  -o "$tmp/weights_vectors" "$here/scripts/cpp_vectors/weights_vectors.cpp"; then
+  if "$tmp/weights_vectors" >"$tmp/weights_vectors.txt"; then
+    if cmp -s "$tmp/weights_vectors.txt" "$here/fixtures/weights_vectors.txt"; then
+      ok "weights_vectors: output matches fixtures/weights_vectors.txt"
+    else
+      bad "weights_vectors: output differs from fixtures/weights_vectors.txt"
+      diff -u "$here/fixtures/weights_vectors.txt" "$tmp/weights_vectors.txt" | head -20
+    fi
+  else
+    bad "weights_vectors: C++ run"
+  fi
+else
+  bad "weights_vectors: C++ build"
+fi
+
+for t in weights_vectors weights_tests; do
+  if cargo test --manifest-path "$here/Cargo.toml" -p fp-host --test "$t" \
+    >"$tmp/$t.log" 2>&1; then
+    ok "Rust $t"
+  else
+    bad "Rust $t"
+    tail -30 "$tmp/$t.log"
+  fi
+done
+
 echo "parity_subproof: cargo build --workspace"
 if cargo build --manifest-path "$here/Cargo.toml" --workspace >"$tmp/build.log" 2>&1; then
   ok "cargo build --workspace"
