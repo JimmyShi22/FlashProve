@@ -44,21 +44,35 @@ pub struct Start {
     pub w: [u32; 8],
 }
 
-/// BLAKE2b's `G` (RFC 7693, section 3.1), with the sums modulo 2^64.
+/// BLAKE2b's `G` (RFC 7693, section 3.1), with the sums modulo 2^64. The unrolled compression
+/// passes the round's two message words and the four state indices; all of its array indices are
+/// then compile-time constants.
 #[inline(always)]
-fn g(v: &mut [u64; 16], m: &[u64; 16], r: usize, i: usize, a: usize, b: usize, c: usize, d: usize) {
-    v[a] = v[a]
-        .wrapping_add(v[b])
-        .wrapping_add(m[SIGMA[r][2 * i]]);
+fn g(v: &mut [u64; 16], x: u64, y: u64, a: usize, b: usize, c: usize, d: usize) {
+    v[a] = v[a].wrapping_add(v[b]).wrapping_add(x);
     v[d] = (v[d] ^ v[a]).rotate_right(32);
     v[c] = v[c].wrapping_add(v[d]);
     v[b] = (v[b] ^ v[c]).rotate_right(24);
-    v[a] = v[a]
-        .wrapping_add(v[b])
-        .wrapping_add(m[SIGMA[r][2 * i + 1]]);
+    v[a] = v[a].wrapping_add(v[b]).wrapping_add(y);
     v[d] = (v[d] ^ v[a]).rotate_right(16);
     v[c] = v[c].wrapping_add(v[d]);
     v[b] = (v[b] ^ v[c]).rotate_right(63);
+}
+
+/// One round's eight `G` calls (`SIGMA[r]`, unrolled). S5a-2: a runtime round loop with
+/// `m[SIGMA[r][..]]` cost 2,955 cycles per compression on the zkVM target; this unrolled form
+/// costs 2,261 (measured in `zkvm/bench`, same public values).
+macro_rules! rounds {
+    ($v:expr, $m:expr, $r:expr) => {{
+        g($v, $m[SIGMA[$r][0]], $m[SIGMA[$r][1]], 0, 4, 8, 12);
+        g($v, $m[SIGMA[$r][2]], $m[SIGMA[$r][3]], 1, 5, 9, 13);
+        g($v, $m[SIGMA[$r][4]], $m[SIGMA[$r][5]], 2, 6, 10, 14);
+        g($v, $m[SIGMA[$r][6]], $m[SIGMA[$r][7]], 3, 7, 11, 15);
+        g($v, $m[SIGMA[$r][8]], $m[SIGMA[$r][9]], 0, 5, 10, 15);
+        g($v, $m[SIGMA[$r][10]], $m[SIGMA[$r][11]], 1, 6, 11, 12);
+        g($v, $m[SIGMA[$r][12]], $m[SIGMA[$r][13]], 2, 7, 8, 13);
+        g($v, $m[SIGMA[$r][14]], $m[SIGMA[$r][15]], 3, 4, 9, 14);
+    }};
 }
 
 /// `F(h, m, t_low, t_high, last)`: one BLAKE2b compression, counted by the caller if required.
@@ -74,16 +88,18 @@ pub fn f(h: &mut [u64; 8], m: &[u64; 16], t_low: u64, t_high: u64, last: bool) {
     v[13] = IV[5] ^ t_high;
     v[14] = IV[6] ^ if last { u64::MAX } else { 0 };
     v[15] = IV[7];
-    for r in 0..12 {
-        g(&mut v, m, r, 0, 0, 4, 8, 12);
-        g(&mut v, m, r, 1, 1, 5, 9, 13);
-        g(&mut v, m, r, 2, 2, 6, 10, 14);
-        g(&mut v, m, r, 3, 3, 7, 11, 15);
-        g(&mut v, m, r, 4, 0, 5, 10, 15);
-        g(&mut v, m, r, 5, 1, 6, 11, 12);
-        g(&mut v, m, r, 6, 2, 7, 8, 13);
-        g(&mut v, m, r, 7, 3, 4, 9, 14);
-    }
+    rounds!(&mut v, m, 0);
+    rounds!(&mut v, m, 1);
+    rounds!(&mut v, m, 2);
+    rounds!(&mut v, m, 3);
+    rounds!(&mut v, m, 4);
+    rounds!(&mut v, m, 5);
+    rounds!(&mut v, m, 6);
+    rounds!(&mut v, m, 7);
+    rounds!(&mut v, m, 8);
+    rounds!(&mut v, m, 9);
+    rounds!(&mut v, m, 10);
+    rounds!(&mut v, m, 11);
     for i in 0..8 {
         h[i] ^= v[i] ^ v[i + 8];
     }

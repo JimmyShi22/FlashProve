@@ -83,3 +83,106 @@ final rebuild differs from Step 6's `8b841981…` only in metadata; its cycle co
 
 No `.rs` file changed: the only working-tree change of S5a-1 is `zkvm/Cargo.toml`. The C++ sources
 are untouched.
+
+# S5a-2: the BLAKE2b soft implementation
+
+Scope: the two BLAKE2b sites of `fp-core` — `hash/earlier.rs`'s `f2b::F` path and
+`hash/modes.rs`'s `compress64` path — both of which call the single compression
+`hash/blake2b.rs::f`. No C++ source and no protocol semantics were changed.
+
+## 1. Reading the code (Step 1)
+
+The current implementation was read first, before any edit:
+
+- `blake2b.rs::f` works on 64-bit words already; the 32-bit wrappers (`earlier_hash_c`,
+  `compress`) convert each call (16 + 16 words), a small per-compression overhead.
+- The rotations use `u64::rotate_right`. The RV64IM target has no rotate instruction; rustc lowers
+  `rotate_right` to a funnel shift (`fshr`), and LLVM lowers that to shifts + or. Writing
+  `(x >> n) | (x << (64 - n))` by hand is the same code.
+- `g` is `#[inline(always)]`; `f` is `#[inline]`. The twelve rounds are a runtime loop
+  (`for r in 0..12`), and inside it `m[SIGMA[r][2 * i]]` is a dynamic, double-indexed lookup: the
+  SIGMA row and the message word are not compile-time constants unless the loop is unrolled.
+- `IV` and `SIGMA` are `const` arrays; `v` is a 16-word local with dynamic indices (`v[a]`, …).
+- There were no explicit unrolling pragmas.
+
+Hypotheses for the hot spots: the un-unrolled round loop and the dynamic SIGMA/message indices;
+everything else (word width, rotations, inline hints) already looked reasonable.
+
+## 2. Microbenchmarks (Step 2)
+
+`zkvm/bench` is an independent SP1 guest with four modes (`0` current fp-core `f`, `1` handwritten
+unrolled with explicit shifts, `2` `blake2b_simd 1.0.5` (no_std, portable path, one-block hash),
+`3` the same unrolled code with `rotate_right`). It performs `n` compressions of one 128-byte block;
+the cycles-per-compression figure subtracts the `n = 0` execution (~9.2k cycles) and divides by
+`n = 4096`. `zkvm/host-exec/src/bin/bench-exec.rs` executes it. The bench ELF was built with the
+S5a-1 final profile and `-Cllvm-args=-inline-threshold=1000`, so the comparison matches the
+production build.
+
+| Mode | Implementation | `n = 0` cycles | `n = 4096` cycles | Cycles per compression |
+|---|---|---|---|---|
+| 0 | current `fp-core::hash::blake2b::f` | 9,219 | 12,112,937 | **2,955.0** |
+| 1 | handwritten, unrolled, explicit shifts | 9,221 | 9,315,377 | **2,272.0** |
+| 2 | `blake2b_simd` 1.0.5 (no_std), 1-block hash | 9,222 | 8,189,013 | **1,997.0** |
+| 3 | handwritten, unrolled, `rotate_right` | 9,223 | 9,270,318 | **2,261.0** |
+
+- **Equivalence evidence**: modes 0, 1 and 3 commit identical public values after 4,096
+  compressions (`sink=269ed10c9428e2c1`, `h0=a431fa3dc99b5208`, `h7=3400bdd87529d1ef`). Mode 2 is
+  a cost reference only: `blake2b_simd` exposes the standard BLAKE2b hash, not the verifier's custom
+  counter/tweak, so it cannot replace `f` directly.
+- **The stated premise is refuted**: the current compression costs **2,955 cycles**, not ~238k.
+  The verifier performs 136,088 compressions (`q_V`); at ~2,955 cycles each that is about
+  **0.40G of the 27.18G total (1.5%)**. Most of the guest's cycles are in the verifier's own
+  planning and checking code (big-integer arithmetic, allocation, plans), not in BLAKE2b.
+- **Best equivalent implementation**: the unrolled compression (mode 3, `rotate_right`), 2,261
+  cycles, 23.5% faster than the current one. Mode 1 (explicit shifts) is statistically the same
+  (2,272; the difference is noise). `blake2b_simd` is faster per compression (1,997) but needs a
+  third-party crate in fp-core and does not expose the tweak API; it is not usable as a drop-in.
+
+The whole-call projection of integrating the unrolled version is
+136,088 × (2,955 − 2,261) ≈ **94M cycles, about 0.35%** of the S5a-1 total.
+
+## 3. Replacement (Step 3)
+
+**Selected**: the hand-written unrolled compression (`rotate_right` form, mode 3). It is
+bit-equivalent to the current compression on the benchmark's 4,096 compressions and 23.5% cheaper
+per compression. It is written by us, so no third-party crate enters `fp-core` and no dependency
+decision is needed.
+
+**Not selected**: `blake2b_simd 1.0.5`. It is the fastest candidate per compression (1,997), but it
+would be a new dependency of `fp-core` (only `libm` is approved there) and it exposes the standard
+BLAKE2b hash — not the verifier's custom counter/tweak — so it cannot be the `f` that `f2b` and
+`compress64` call. It stays a cost reference in `zkvm/bench`.
+
+The change: in `fp-core/src/hash/blake2b.rs`, `f`'s round loop became twelve unrolled
+`rounds!` calls; `g` now takes the round's two message words and the four state indices, so every
+array index is a compile-time constant. `SIGMA`, `IV`, the counters and the public API are
+unchanged; `compress64`, `compress`, `earlier_hash_f` and all callers are untouched.
+
+The measured whole-call effect and the full regression follow.
+
+## 4. Acceptance (S5a-2)
+
+With the unrolled compression in `fp-core`, the same accepted example executes in
+**27,079,048,885 cycles**, against the S5a-1 final 27,176,326,759: **−97,277,874 cycles (−0.36%)**,
+and against the original S5 baseline 32,385,267,062: **−16.39%**. The consistency gate passes
+(`result-v1 IDENTICAL`, `YES IDENTICAL`), the guest exits 0, and the ELF is 12,165,856 bytes.
+
+The measured saving matches the projection (136,088 × 694 ≈ 94M cycles): the small whole-call
+effect is not a failure of the new compression; it is the direct consequence of BLAKE2b being only
+about 1.5% of this call's cycles.
+
+The full regression is green: `cargo test --workspace` **229 passed, 0 failed**;
+`scripts/parity.sh` **31 passed, 0 failed**; `scripts/parity_e2e.sh` **3 passed, 0 failed**;
+`scripts/parity_negative.sh` **70 passed, 0 failed** (rejection-name checklist 11/11).
+
+## 5. What the numbers say
+
+- The S5a-2 premise "the current compression costs ~238k cycles" came from dividing the call's
+  total by `q_V`. The microbenchmark shows the compression itself costs 2,955 cycles; the call's
+  136,088 compressions are ~0.40G of 27.18G cycles (1.5%).
+- The verifier's remaining ~26.8G cycles are its own planning and checking code: the exact
+  big-integer arithmetic (`Big`/`Real`), allocation and the large plan structures. The next
+  meaningful step, if the PM authorizes one, is to profile that code, not BLAKE2b.
+- The benchmark harness is kept: `zkvm/bench` (four modes) and
+  `zkvm/host-exec/src/bin/bench-exec.rs`; it can measure any future compression change against the
+  same protocol.
