@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use sp1_core_executor::SP1CoreOpts;
+use sp1_core_executor::{ExecutionReport, SP1CoreOpts};
 use sp1_sdk::blocking::{Elf, Prover, ProverClient, SP1Stdin};
 
 fn fail(msg: &str) -> ! {
@@ -56,7 +56,54 @@ fn find_elf(zkvm: &Path) -> PathBuf {
     ))
 }
 
+/// S5a-3: the execute report's opcode counts, most frequent first.
+fn print_opcodes(report: &ExecutionReport, total: u64) {
+    let mut rows: Vec<(String, u64)> = report
+        .opcode_counts
+        .iter()
+        .map(|(op, c)| (op.to_string(), *c))
+        .collect();
+    rows.sort_by(|a, b| b.1.cmp(&a.1));
+    println!(
+        "host-exec: opcode distribution: {} kinds, {} cycles",
+        rows.len(),
+        total
+    );
+    let mut shown = 0u64;
+    for (name, c) in rows.iter().take(20) {
+        shown += *c;
+        println!(
+            "host-exec:   {:<8} {:>12} {:6.2}%",
+            name,
+            c,
+            100.0 * *c as f64 / total as f64
+        );
+    }
+    if rows.len() > 20 {
+        println!(
+            "host-exec:   {:<8} {:>12} {:6.2}%",
+            "other",
+            total - shown,
+            100.0 * (total - shown) as f64 / total as f64
+        );
+    }
+}
+
 fn main() {
+    // S5a-3: `--part <0|1|2|3>` runs one stage only (0 is the whole call).
+    let args: Vec<String> = std::env::args().collect();
+    let mut part: u32 = 0;
+    let mut a = 1usize;
+    while a < args.len() {
+        if args[a] == "--part" && a + 1 < args.len() {
+            part = args[a + 1]
+                .parse()
+                .unwrap_or_else(|_| fail("--part takes 0, 1, 2 or 3"));
+            a += 2;
+        } else {
+            fail(&format!("unknown argument {}", args[a]));
+        }
+    }
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let zkvm = manifest
         .parent()
@@ -110,6 +157,7 @@ fn main() {
     stdin.write(&y);
     stdin.write(&proof);
     stdin.write(&id);
+    stdin.write(&part);
 
     let client = ProverClient::builder().cpu().build();
     let started = std::time::Instant::now();
@@ -136,10 +184,22 @@ fn main() {
         report.touched_memory_addresses,
         report.total_record_size()
     );
+    print_opcodes(&report, cycles);
     println!("host-exec: public output ({} bytes):", out.len());
     print!("{out}");
     if !out.ends_with('\n') {
         println!();
+    }
+    if part != 0 {
+        println!(
+            "host-exec: partial run (part {part}: {}), no consistency comparison",
+            match part {
+                1 => "key",
+                2 => "leaf",
+                _ => "request",
+            }
+        );
+        return;
     }
 
     // The S3 reference: `fp-host` on the same five paths, with the same ID and -q.

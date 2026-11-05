@@ -186,3 +186,81 @@ The full regression is green: `cargo test --workspace` **229 passed, 0 failed**;
 - The benchmark harness is kept: `zkvm/bench` (four modes) and
   `zkvm/host-exec/src/bin/bench-exec.rs`; it can measure any future compression change against the
   same protocol.
+
+# S5a-3: profiling the verifier's own code
+
+## Step 0: localization
+
+The instruments: `host-exec` now prints the execute report's full opcode distribution (top 20 plus
+"other"), and takes `--part 0|1|2|3` (whole call / key alone / leaf alone / request alone). The
+guest gained a `part` input; a partial run executes one stage and commits its text, and `host-exec`
+skips the consistency comparison for it. The full run still passes the gate. All changes are in
+`zkvm/` only; no `fp-core` and no C++ change in this step.
+
+Full call with the instruments: **27,055,820,319 cycles**, `result-v1`/`YES` IDENTICAL. (This is the
+new measured baseline for S5a-3; it differs from S5a-2's 27,079,048,885 by a code-layout shift of
+the instrumented guest.)
+
+### Opcode distribution (whole call)
+
+| Opcode | Cycles | Share | | Opcode | Cycles | Share |
+|---|---|---|---|---|---|---|
+| add | 3,819,218,385 | 14.12% | | beq | 698,642,841 | 2.58% |
+| addi | 3,490,021,164 | 12.90% | | bne | 676,091,903 | 2.50% |
+| sub | 2,414,953,211 | 8.93% | | mulhu | 504,601,414 | 1.87% |
+| and | 2,111,775,807 | 7.81% | | lui | 417,181,068 | 1.54% |
+| sll | 1,936,498,578 | 7.16% | | bltu | 386,310,842 | 1.43% |
+| ld | 1,823,290,774 | 6.74% | | lwu | 301,863,665 | 1.12% |
+| srl | 1,791,639,825 | 6.62% | | xor | 270,595,368 | 1.00% |
+| sltu | 1,544,485,031 | 5.71% | | bgeu | 263,058,852 | 0.97% |
+| sd | 1,511,831,884 | 5.59% | | auipc | 239,974,342 | 0.89% |
+| or | 1,002,133,828 | 3.70% | | other | 1,106,567,209 | 4.09% |
+| mul | 745,084,328 | 2.75% | | | | |
+
+Grouped: arithmetic/logic (`add`, `addi`, `sub`, `and`, `sll`, `srl`, `or`, `sltu`, `xor`) **~68%**;
+loads and stores (`ld`, `sd`, `lwu`) **~13.5%**; branches ~7.5%; `mul`/`mulhu` ~4.6%; address
+materialisation (`lui`, `auipc`) ~2.4%. There are no `div`/`rem` in the top 20.
+
+### The three stages, measured separately
+
+| Part | Total cycles | Share of the full call | Opcode notes |
+|---|---|---|---|
+| key | 5,716,271,928 | 21.1% | addi 15.9%, add 11.6%, srl/sll 8.3/8.3%, and 7.0%, ld/sd 6.2/5.8% |
+| leaf | 5,562,665,955 | 20.6% | addi 15.5%, add 12.1%, sll/srl 8.2/8.1%, and 7.1%, ld/sd 6.0/5.7% |
+| request | 15,875,165,332 | 58.7% | add 15.8%, sub 11.3%, addi 10.9%, and 8.3%, sltu 8.1%, ld 7.2%, sd 5.5%, mul 3.2%, mulhu 2.6% |
+
+The three parts sum to 27,154,103,215 against the full call's 27,055,820,319; the 98,282,896
+difference is about twice the per-execution prefix (guest start-up plus reading the private input,
+~49M each), with the call assembly negligible.
+
+**Caveat**: every partial run also performs the shared `setup()` (policy scan, layout, shape plans,
+`configure`); the full call performs it three times (once per stage). The measured ratios are
+therefore not pure stage-body shares, and the key/leaf parts, which are almost equal (5.72G vs
+5.56G), mix the same setup with two similar table checks.
+
+### Preliminary hypothesis
+
+1. **Exact big-integer arithmetic (`Big`/`Real`) is the largest head.** Arithmetic/logic is ~68% and
+   loads/stores ~13.5%, with `mul`/`mulhu` ~4.6% and no division in the top 20: this is the
+   limb-by-limb shape of the ported `Big`/`Real` operations, their comparisons, and the
+   `Vec<u32>`/`Vec<u64>` traffic they cause. BLAKE2b is only ~1.5% (S5a-2), so this is the
+   verifier's own analysis and checking code, not hashing.
+2. **Allocation and copying** show up as the ~13.5% of loads/stores plus the address materialisation
+   (~2.4%): `Big`/`Real`/`Bound` are `Vec`-backed, cloned freely in plans, accounting and printed
+   figures. `format!`-built strings contribute here too.
+3. **The repeated setup** is unmeasured on its own. It is included in every partial run and paid
+   three times in the full call; it builds all shapes and plans (`build_links`, the layer/head
+   plans, the attention plans). Its size decides whether caching it across the three stages is the
+   first thing to do.
+
+### Step 1 candidates (for the TL's ordering)
+
+- **Measure setup alone** (a plan-only/spy path in fp-core, or one more `part` mode that stops after
+  `setup`): decisive for a reuse-across-stages optimization, which would otherwise be blind.
+- **`Big`/`Real` fast paths**: inline storage for one- and two-limb values instead of a heap `Vec`,
+  `u64`/`u128` fast paths in add/sub/mul/compare, inlining the hot element-wise loops.
+- **Allocation/copy reduction**: `with_capacity`, buffer reuse, fewer `clone`s of `Big`/`Real`/
+  `Binding`s in plan construction and accounting, and fewer `format!` allocations in the printed
+  paths.
+
+The instruments (`--part`, the opcode dump) stay in `zkvm/` for the next rounds.

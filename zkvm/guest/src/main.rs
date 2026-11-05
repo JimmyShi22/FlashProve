@@ -43,6 +43,7 @@ pub fn main() {
     let y = bytes();
     let proof = bytes();
     let id = io::read::<String>();
+    let part = io::read::<u32>();
 
     let (out, status) = call::run(call::Inputs {
         pol: &pol,
@@ -56,6 +57,7 @@ pub fn main() {
         proof: &proof,
         id_asked: &id,
         asked: fp_core::consts::BAR,
+        part,
     });
     io::commit(&out);
     io::commit(&status);

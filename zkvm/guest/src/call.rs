@@ -33,6 +33,9 @@ pub struct Inputs<'a> {
     pub proof: &'a [u8],
     pub id_asked: &'a str,
     pub asked: f64,
+    /// 0: the whole call; 1: the key stage alone; 2: the leaf stage alone; 3: the request stage
+    /// alone. A partial run only measures that stage; its public output is the stage's text.
+    pub part: u32,
 }
 
 /// One stage's output (`RanStage` in fp-host).
@@ -185,6 +188,49 @@ pub fn run(input: Inputs<'_>) -> (String, i32) {
     let mut host_calls = HashCalls::new();
     let _h_par = configuration_digest(&[input.pol, input.layout, input.kl], &mut host_calls);
     let policy = PolicyNamed::default();
+    if input.part != 0 {
+        // S5a-3's per-stage measurement: one stage in this execution.
+        let (mode, entry, req, yy, proof): (
+            StageMode,
+            Option<&[u8]>,
+            Option<&[u32]>,
+            Option<&[u32]>,
+            Option<&[u8]>,
+        ) = match input.part {
+            1 => (StageMode::Key, None, None, None, None),
+            2 => (StageMode::Leaf, Some(input.entry), None, None, None),
+            _ => (
+                StageMode::Request,
+                Some(input.entry),
+                Some(&request_words),
+                Some(&y_words),
+                Some(input.proof),
+            ),
+        };
+        let request_mode = mode == StageMode::Request;
+        let files = StageFiles {
+            pol: input.pol,
+            layout: Some(input.layout),
+            kl: &kl,
+            key: input.key,
+            entry,
+            entry_number: if request_mode { input.entry_number } else { 0 },
+            request: req,
+            y: yy,
+            odd_statement: false,
+            proof,
+            id_asked: input.id_asked,
+            asked: input.asked,
+            quiet: true,
+            next_token_asked: false,
+            plan_only: false,
+            policy: &policy,
+        };
+        let mut state = StageState::default();
+        state.inner_threads = 1;
+        let out = run_stage(mode, files, &mut state);
+        return (out.text, out.status);
+    }
     let specs: [(StageMode, Option<&[u8]>, Option<&[u32]>, Option<&[u32]>, Option<&[u8]>); 3] = [
         (StageMode::Key, None, None, None, None),
         (StageMode::Leaf, Some(input.entry), None, None, None),
