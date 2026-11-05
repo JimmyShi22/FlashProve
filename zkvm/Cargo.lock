@@ -1172,6 +1172,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "fp-hostlib"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fp-pv",
+ "serde",
+ "serde_json",
+ "sp1-sdk",
+]
+
+[[package]]
+name = "fp-pv"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
 name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1359,6 +1377,7 @@ name = "guest"
 version = "0.1.0"
 dependencies = [
  "fp-core",
+ "fp-pv",
  "sp1-zkvm",
 ]
 
@@ -1450,6 +1469,8 @@ dependencies = [
 name = "host-exec"
 version = "0.1.0"
 dependencies = [
+ "fp-hostlib",
+ "fp-pv",
  "sp1-core-executor",
  "sp1-sdk",
 ]
@@ -3983,6 +4004,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp1-cuda"
+version = "6.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42c89a7e94d170da840bad7a040d2ea02009427074926124f82a9fee03f8ad6f"
+dependencies = [
+ "bincode",
+ "bytes",
+ "reqwest",
+ "serde",
+ "sp1-core-executor",
+ "sp1-core-machine",
+ "sp1-hypercube",
+ "sp1-primitives",
+ "sp1-prover",
+ "sp1-prover-types",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "sp1-curves"
 version = "6.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4349,6 +4391,7 @@ dependencies = [
  "sp1-core-executor",
  "sp1-core-executor-runner",
  "sp1-core-machine",
+ "sp1-cuda",
  "sp1-hypercube",
  "sp1-primitives",
  "sp1-prover",

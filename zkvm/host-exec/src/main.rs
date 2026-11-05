@@ -1,4 +1,4 @@
-//! S5 host: execute the guest in SP1 (execution only, no proving) and check its public output
+//! S5/S6 host: execute the guest in SP1 (execution only, no proving) and check its public output
 //! against `fp-host`, the S3 reference.
 //!
 //! The guest's private input is what a `cp_verify` call reads from its five paths: the
@@ -6,54 +6,76 @@
 //! the leaf file that the proof names, and the request, y and proof files; then the commitment ID.
 //! Each byte string is written with `SP1Stdin::write`, the length-prefixed serialization that the
 //! guest reads with `sp1_zkvm::io::read`.
+//!
+//! Everything comes from the configuration file (`--config`, default
+//! `zkvm/config/flashprove.json`): the ELF, the input paths, the fp-host binary. If a vkey record
+//! exists, this host also requires the ELF to be the one the record was generated from.
+//!
+//! The guest commits, in order: the 128-byte `FPV1` public-values block, the report text, and the
+//! call status. This host reads all three, rebuilds the expected block from `fp-host`'s stdout and
+//! the same input files, and requires the two to be byte-identical.
 
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
+use fp_hostlib as hostlib;
+use fp_hostlib::{hex, Config};
 use sp1_core_executor::{ExecutionReport, SP1CoreOpts};
-use sp1_sdk::blocking::{Elf, Prover, ProverClient, SP1Stdin};
+use sp1_sdk::blocking::{Elf, Prover, ProverClient};
 
 fn fail(msg: &str) -> ! {
     eprintln!("host-exec: {msg}");
     std::process::exit(1)
 }
 
-fn read(path: &Path) -> Vec<u8> {
-    fs::read(path).unwrap_or_else(|e| fail(&format!("cannot read {}: {e}", path.display())))
+struct Args {
+    config: PathBuf,
+    root: PathBuf,
+    elf: Option<PathBuf>,
+    /// S5a-3: `--part <0|1|2|3>` runs one stage only (0 is the whole call).
+    part: u32,
 }
 
-fn find_elf(zkvm: &Path) -> PathBuf {
-    let mut tried = Vec::new();
-    for triple in [
-        "riscv64im-succinct-zkvm-elf",
-        "riscv32im-succinct-zkvm-elf",
-    ] {
-        for base in [zkvm.join("target"), zkvm.join("guest").join("target")] {
-            tried.push(
-                base.join("elf-compilation")
-                    .join(triple)
-                    .join("release")
-                    .join("guest"),
-            );
-        }
-        for base in [zkvm.join("elf"), zkvm.join("guest").join("elf")] {
-            tried.push(base.join(triple).join("release").join("guest"));
+fn parse_args() -> Args {
+    let mut root = None;
+    let mut config = None;
+    let mut elf = None;
+    let mut part = 0u32;
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--root" => root = Some(PathBuf::from(args.next().unwrap_or_else(|| fail("--root needs a value")))),
+            "--config" => config = Some(PathBuf::from(args.next().unwrap_or_else(|| fail("--config needs a value")))),
+            "--elf" => elf = Some(PathBuf::from(args.next().unwrap_or_else(|| fail("--elf needs a value")))),
+            "--part" => {
+                part = args
+                    .next()
+                    .unwrap_or_else(|| fail("--part needs a value"))
+                    .parse()
+                    .unwrap_or_else(|_| fail("--part takes 0, 1, 2 or 3"));
+                if part > 3 {
+                    fail("--part takes 0, 1, 2 or 3");
+                }
+            }
+            "-h" | "--help" => {
+                println!("usage: host-exec [--root DIR] [--config FILE] [--elf FILE] [--part 0|1|2|3]");
+                std::process::exit(0)
+            }
+            other => fail(&format!("unknown argument {other:?}; see --help")),
         }
     }
-    for c in &tried {
-        if c.is_file() {
-            return c.clone();
-        }
-    }
-    let list = tried
-        .iter()
-        .map(|p| format!("  {}", p.display()))
-        .collect::<Vec<_>>()
-        .join("\n");
-    fail(&format!(
-        "the guest ELF was not found. Run `cargo prove build` in zkvm/guest (or set GUEST_ELF).\nTried:\n{list}"
-    ))
+    let root = root.unwrap_or_else(|| {
+        let cwd = std::env::current_dir().unwrap_or_else(|e| fail(&format!("cannot read the current directory: {e}")));
+        hostlib::find_root(&cwd).unwrap_or_else(|e| fail(&format!("{e:#}")))
+    });
+    let config = config.unwrap_or_else(|| hostlib::default_config_path(&root));
+    Args { config, root, elf, part }
+}
+
+fn load_elf(root: &Path, config: &Config, override_path: Option<PathBuf>) -> (PathBuf, Vec<u8>) {
+    let path = override_path.unwrap_or_else(|| hostlib::elf_path(root, config));
+    let bytes = std::fs::read(&path)
+        .unwrap_or_else(|e| fail(&format!("cannot read the ELF {}: {e}", path.display())));
+    (path, bytes)
 }
 
 /// S5a-3: the execute report's opcode counts, most frequent first.
@@ -90,74 +112,41 @@ fn print_opcodes(report: &ExecutionReport, total: u64) {
 }
 
 fn main() {
-    // S5a-3: `--part <0|1|2|3>` runs one stage only (0 is the whole call).
-    let args: Vec<String> = std::env::args().collect();
-    let mut part: u32 = 0;
-    let mut a = 1usize;
-    while a < args.len() {
-        if args[a] == "--part" && a + 1 < args.len() {
-            part = args[a + 1]
-                .parse()
-                .unwrap_or_else(|_| fail("--part takes 0, 1, 2 or 3"));
-            a += 2;
-        } else {
-            fail(&format!("unknown argument {}", args[a]));
-        }
+    let args = parse_args();
+    let config = hostlib::load_config(&args.config)
+        .unwrap_or_else(|e| fail(&format!("{e:#}")));
+    let inputs = hostlib::load_inputs(&args.root, &config)
+        .unwrap_or_else(|e| fail(&format!("{e:#}")));
+    let (elf_path, elf) = load_elf(&args.root, &config, args.elf);
+
+    let record_path = hostlib::vkey_record_path(&args.root, &config)
+        .unwrap_or_else(|e| fail(&format!("{e:#}")));
+    if !record_path.is_file() {
+        fail(&format!(
+            "{} is missing; run `gen-vkey --update` first",
+            record_path.display()
+        ));
     }
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let zkvm = manifest
-        .parent()
-        .expect("zkvm/host-exec has a parent")
-        .to_path_buf();
-    let repo = zkvm.parent().expect("zkvm has a parent").to_path_buf();
-    let fixtures = repo.join("rust-nostd-verifier").join("fixtures");
-    let elf_path = match std::env::var("GUEST_ELF") {
-        Ok(p) => PathBuf::from(p),
-        Err(_) => find_elf(&zkvm),
-    };
-    let elf = read(&elf_path);
+    let record = hostlib::load_vkey_record(&args.root, &config)
+        .unwrap_or_else(|e| fail(&format!("{e:#}")));
+    record
+        .check_elf(&elf_path, &elf)
+        .unwrap_or_else(|e| fail(&format!("{e:#}")));
     println!(
-        "host-exec: sp1 circuit {}, guest ELF {} ({} bytes)",
+        "host-exec: sp1 circuit {}, guest ELF {} ({} bytes, sha256 {})",
         sp1_sdk::SP1_CIRCUIT_VERSION,
         elf_path.display(),
-        elf.len()
+        elf.len(),
+        fp_hostlib::sha256_hex(&elf)
     );
+    println!("host-exec: vkey {}", record.sp1.vkey_bytes32);
 
-    let config = fixtures.join("config");
-    let ivk = fixtures.join("ivk");
-    let request_path = fixtures.join("example.req");
-    let y_path = fixtures.join("example.y");
-    let proof_path = fixtures.join("example.proof");
-    let policy = read(&config.join("policy.txt"));
-    let layout = read(&config.join("layout.txt"));
-    let kl = read(&config.join("KL.bin"));
-    let key = read(&ivk.join("key.bin"));
-    let proof = read(&proof_path);
-    let request = read(&request_path);
-    let y = read(&y_path);
-    let id = String::from_utf8(read(&fixtures.join("ID.txt")))
-        .expect("ID.txt is UTF-8")
-        .trim()
-        .to_string();
-    // The proof header's third word is the leaf number (`cpProofHead`, cp_verify.cpp:3365-3374).
-    if proof.len() < 12 {
-        fail("the proof file is shorter than its header");
-    }
-    let entry_number = u32::from_le_bytes(proof[8..12].try_into().unwrap());
-    let entry = read(&ivk.join("leaf").join(format!("{entry_number}.bin")));
+    let expected_digest = inputs.input_digest();
+    println!("host-exec: input digest 0x{}", hex(&expected_digest));
 
-    let mut stdin = SP1Stdin::new();
-    stdin.write(&policy);
-    stdin.write(&layout);
-    stdin.write(&kl);
-    stdin.write(&key);
-    stdin.write(&entry);
-    stdin.write(&entry_number);
-    stdin.write(&request);
-    stdin.write(&y);
-    stdin.write(&proof);
-    stdin.write(&id);
-    stdin.write(&part);
+    // The guest reads `part` after the commitment ID (S5a-3's stage selector).
+    let mut stdin = inputs.stdin();
+    stdin.write(&args.part);
 
     let client = ProverClient::builder().cpu().build();
     let started = std::time::Instant::now();
@@ -167,8 +156,12 @@ fn main() {
         .unwrap_or_else(|e| fail(&format!("SP1 execute failed: {e}")));
     let elapsed = started.elapsed().as_secs_f64();
 
+    // The guest's commit order: the raw 128-byte FPV1 block, the report, the status.
+    let mut guest_pv = [0u8; fp_pv::PV_LEN];
+    public.read_slice(&mut guest_pv);
     let out: String = public.read();
     let status: i32 = public.read();
+
     let cycles = report.total_instruction_count();
     let shard_size = SP1CoreOpts::default().shard_size as u64;
     let shards = cycles.div_ceil(shard_size);
@@ -190,10 +183,11 @@ fn main() {
     if !out.ends_with('\n') {
         println!();
     }
-    if part != 0 {
+    if args.part != 0 {
         println!(
-            "host-exec: partial run (part {part}: {}), no consistency comparison",
-            match part {
+            "host-exec: partial run (part {}: {}), no consistency comparison",
+            args.part,
+            match args.part {
                 1 => "key",
                 2 => "leaf",
                 _ => "request",
@@ -202,26 +196,34 @@ fn main() {
         return;
     }
 
-    // The S3 reference: `fp-host` on the same five paths, with the same ID and -q.
-    let fp_host = repo.join("rust-nostd-verifier").join("target").join("debug").join("fp-host");
-    if !fp_host.is_file() {
-        fail(&format!(
-            "{} is missing; build it with `cargo build` in rust-nostd-verifier/",
-            fp_host.display()
-        ));
+    let values = fp_pv::Values::decode(&guest_pv)
+        .unwrap_or_else(|| fail("the guest's first public value is not a valid FPV1 block"));
+    println!(
+        "host-exec: public values FPV1 verdict={} status={} result-v1-status={} id=0x{} input=0x{} result=0x{}",
+        fp_pv::verdict::name(values.verdict),
+        values.call_status,
+        values.result_v1_status,
+        hex(&values.commitment_id),
+        hex(&values.input_digest),
+        hex(&values.result_v1_digest)
+    );
+    if values.input_digest != expected_digest {
+        fail("the guest's input digest does not match the files on disk");
     }
-    let reference = Command::new(&fp_host)
-        .arg(&config)
-        .arg(&ivk)
-        .arg(&request_path)
-        .arg(&y_path)
-        .arg(&proof_path)
-        .arg("-id")
-        .arg(&id)
-        .arg("-q")
-        .output()
-        .unwrap_or_else(|e| fail(&format!("cannot run fp-host: {e}")));
-    let reference_out = String::from_utf8_lossy(&reference.stdout);
+
+    // The S3 reference: `fp-host` on the same five paths, with the same ID and -q.
+    let reference = hostlib::run_fp_host(&args.root, &config, &inputs)
+        .unwrap_or_else(|e| fail(&format!("{e:#}")));
+    let reference_out = reference.stdout.as_str();
+    // fp-host exits with the reference verifier's own status for the verdict; the committed call
+    // status comes from the report text. They are independent readings and must agree.
+    let status_ok = i32::from(values.call_status) == reference.status;
+    println!(
+        "host-exec: fp-host exit status {}, committed call status {}{}",
+        reference.status,
+        values.call_status,
+        if status_ok { "" } else { " (DIFFERS)" }
+    );
     let want_result = reference_out
         .lines()
         .find(|l| l.starts_with("result-v1 "))
@@ -247,11 +249,31 @@ fn main() {
         "host-exec: YES {}",
         if yes_ok { "IDENTICAL" } else { "DIFFERS" }
     );
-    if !(result_ok && yes_ok) {
+
+    // The public values that fp-host's own stdout implies, from the same input files.
+    let expected_pv = hostlib::expected_public_values(&inputs, reference_out);
+    let pv_ok = guest_pv == expected_pv;
+    println!(
+        "host-exec: public values {}",
+        if pv_ok {
+            "IDENTICAL to fp-host".to_string()
+        } else {
+            format!(
+                "DIFFER (guest 0x{}, fp-host 0x{})",
+                hex(&guest_pv),
+                hex(&expected_pv)
+            )
+        }
+    );
+
+    if !(result_ok && yes_ok && pv_ok && status_ok) {
         fail("the guest's public output does not match fp-host");
     }
     if status != 0 {
         fail(&format!("the guest ended with status {status}, expected 0"));
     }
-    println!("host-exec: PASS (result-v1 and YES are byte-identical to fp-host)");
+    println!(
+        "host-exec: PASS (public values, result-v1, YES and the call status match fp-host; vkey {} matches the ELF)",
+        record.sp1.vkey_bytes32
+    );
 }
