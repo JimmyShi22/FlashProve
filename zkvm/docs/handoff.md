@@ -20,6 +20,7 @@ call path are in this repository and are tested locally.
 | Program vkey (on-chain) | **`0x007991cd508039250725758bafb93d0173397e4743679884dfd7cae0ca21d0aa`** | `zkvm/config/vkey.json` (`sp1.vkey_bytes32`) |
 | Public-values schema | `FPV1`, 128 bytes at offset 0 | `zkvm/fp-pv/src/pv.rs`, `zkvm/contracts/src/libraries/FlashProvePublicValues.sol` |
 | Input digest scheme | `FlashProve/input-v1\0` + length-prefixed fields, SHA-256 | `zkvm/fp-pv/src/inputs.rs` |
+| Input files (accepted example) | `zkvm/config/input-manifest.json`: nine files, sizes, SHA-256 values, leaf 0, the bundle digest | `fp-pv manifest` |
 
 The vkey is a function of the ELF. **If the guest changes (for example a cycle optimization), the
 ELF and the vkey change.** Regenerate the record and redeploy (or reconfigure) the wrapper before
@@ -41,6 +42,38 @@ program-specific constants. `program.elf` and `program.vkey_record` are the two 
 when switching programs. `zkvm/config/flashprove.bench.json` is a worked example that points at a
 different guest (the BLAKE2b benchmark) and its own record.
 
+### The input files
+
+The block's input digest commits to the ten values the guest reads; nine of them are files. Their
+frozen description is `zkvm/config/input-manifest.json`, written by `fp-pv manifest` and checked by
+`fp-pv manifest --check`:
+
+```sh
+zkvm/target/release/fp-pv manifest --check zkvm/config/input-manifest.json
+# fp-pv: MATCH (9 files, leaf 0, input digest 0xe0ea24c8...)
+```
+
+The manifest records the leaf number, the canonical bundle digest, and each file's name, relative
+path, size and SHA-256. The check ignores the path strings and compares names, sizes and hashes, so
+the prover's copy may live elsewhere. The table below is the accepted example's manifest; for
+another call, generate it from that call's configuration and give it to the prover, then run
+`--check` before proving.
+
+| file | bytes | SHA-256 | path |
+|---|---|---|---|
+| policy | 2,479 | `8d9ae1dda2e503550cafade93c54c1b8ecc8eb4b6dab3b843c72a478bb892d2f` | `rust-nostd-verifier/fixtures/config/policy.txt` |
+| layout | 27,038 | `a0cce649d992c6f17d1e27c68ac4b900b828ff6ef0bfe8da7c2491fed9f02225` | `rust-nostd-verifier/fixtures/config/layout.txt` |
+| kl | 464 | `b8fb55ed7c70c4cdc7bac01e804dd0dc79349022ba7972957c7e50a29dc974a2` | `rust-nostd-verifier/fixtures/config/KL.bin` |
+| key | 1,096,408 | `123dc39e8947fd3ba838d7a1a35d587c2f0e1707d1bca9b6ed551b52bf0c2e09` | `rust-nostd-verifier/fixtures/ivk/key.bin` |
+| entry | 536,952 | `c9484f50fedfaf4e28ec9d1b5d19c3cd5e97bf4582511da49f9eb5693f10e1e0` | `rust-nostd-verifier/fixtures/ivk/leaf/0.bin` |
+| request | 264 | `ce700974a03d43586d66ca742f9bbc8ad45c936d03dfdb8614dd559a2780aa13` | `rust-nostd-verifier/fixtures/example.req` |
+| y | 4 | `add7f2a4843f8c512c0e2875546581db11b9ba227ee008b5f719dfacb125de76` | `rust-nostd-verifier/fixtures/example.y` |
+| proof | 4,145,300 | `5ed47fd101093e826a5bc833e57633e5a9237b49213c8f37cf518a3c1c8d9d99` | `rust-nostd-verifier/fixtures/example.proof` |
+| id | 64 | `7854b8b0879402583fe279d0f74561331bb89438f72ba6ff7ec81932fe397220` | `rust-nostd-verifier/fixtures/ID.txt` |
+
+Input digest: **`0xe0ea24c85e2fe7e6458b8d574aa429bb0e9e7ce0a25b6efc605e4afbd3294392`**. This is the
+`inputHash` the wrapper's `verify` must receive; the proof's block carries the same 32 bytes.
+
 ## 2. Requirements on the proving machine
 
 - Linux x86-64, an NVIDIA GPU (an H100 with 80 GB is the reference; a smaller card may not fit
@@ -49,24 +82,32 @@ different guest (the BLAKE2b benchmark) and its own record.
 - `sp1-cli 6.10.0`: `cargo install sp1-cli --version 6.10.0 --locked`
 - The SP1 zkVM toolchain: `cargo prove install-toolchain` (rustc `1.96.0-dev`, targets
   `riscv64im-succinct-zkvm-elf`).
-- The repository at the commit that holds the frozen artifact; the `bin/`, `prover/` and
-  `zkvm/target/` trees are not required.
+- The repository at the commit that holds the frozen artifact (branch `feat/s6-cpu`; the client
+  gives the commit hash); the `bin/`, `prover/` and `zkvm/target/` trees are not required.
 - The guest ELF at the path configured in `program.elf`, **or** the ability to rebuild it. A
   rebuild must reproduce the ELF hash in `zkvm/config/vkey.json`; if it does not (for example the
   source changed), stop and regenerate the record and the on-chain configuration instead of
   proving against a stale vkey.
 
-Checks:
+Checks (after building the tools in §3):
 
 ```sh
 cargo prove --version                      # cargo-prove sp1 ...
 rustup toolchain list                      # includes `succinct`
 zkvm/target/release/gen-vkey --check-elf   # MATCH against the current ELF
+zkvm/target/release/fp-pv manifest --check zkvm/config/input-manifest.json
+                                           # MATCH against the frozen input files
 ```
 
 ## 3. Build the prover
 
-On the GPU machine only (the `cuda` feature does not build on macOS):
+On the GPU machine only. First the tools and a CPU/mock prover (no CUDA required):
+
+```sh
+cargo build --release -p fp-hostlib --bins --manifest-path zkvm/Cargo.toml
+```
+
+Then the CUDA prover (the `cuda` feature does not build on macOS):
 
 ```sh
 cargo build --release -p fp-hostlib --bin fp-prover --features cuda \
@@ -90,6 +131,11 @@ Edit `zkvm/config/flashprove.json` (or copy it) so that:
 The leaf number is the third word of the FlashProve proof header; the loader derives it, so the
 ivk folder must contain that leaf file.
 
+Before proving, confirm the files are the client's: `fp-pv manifest --check <the client's
+manifest>` must print `MATCH`, and the manifest's `input_digest` must equal the `inputHash` the
+client will pass to the wrapper. The prover computes the same digest from the files and refuses to
+write artifacts if the guest committed a different one.
+
 ```sh
 zkvm/target/release/fp-prover prove --config zkvm/config/flashprove.json
 ```
@@ -109,7 +155,7 @@ In `prover.output_dir`:
 | `public_values.bin` | raw SP1 public values: the 128-byte `FPV1` block, the report text, the call status |
 | `public_values.hex` | the same, 0x-prefixed |
 | `pv.bin` | the first 128 bytes, the `FPV1` block alone |
-| `bundle.bin` | `abi.encode(bytes publicValues, bytes proofBytes)` — the wrapper's `proof` argument |
+| `bundle.bin` | `abi.encode(bytes publicValues, bytes proofBytes)` — the wrapper's `proof` argument (Groth16/Plonk; core and compressed proofs write no bundle) |
 | `bundle.hex` | the same, 0x-prefixed |
 | `summary.json` | ELF hash, vkey, input digest, verdict, commitment ID, proof mode, sizes, elapsed |
 
