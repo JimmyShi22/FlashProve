@@ -264,3 +264,87 @@ therefore not pure stage-body shares, and the key/leaf parts, which are almost e
   paths.
 
 The instruments (`--part`, the opcode dump) stay in `zkvm/` for the next rounds.
+
+## Step 1a: function-level profile
+
+### Plan A: not compilable on this toolchain
+
+The task book's plan A requires a guest-side cycle counter (`extern "C" { fn cycle_count() -> u64; }`
+provided by the guest as a `sp1_zkvm::syscall_cycle_count` wrapper). **SP1 6.10.0 has no such
+syscall.** The complete syscall list of `sp1-core-executor` 6.10.0 is: `HALT`, `WRITE`, the
+unconstrained enter/exit, the precompiles (`SHA_EXTEND`, `SHA_COMPRESS`, `ED_ADD`, `ED_DECOMPRESS`,
+`KECCAK_PERMUTE`), `COMMIT`, `COMMIT_DEFERRED_PROOFS`, `HINT_LEN`, `HINT_READ`, `MPROTECT`,
+`SIG_RETURN`, `HINT_MPROTECT_FLUSH`, `DUMP_ELF`, and the two profiler-symbol calls. There is no
+cycle-count call, so the `extern` symbol cannot be implemented without inline assembly, which the
+red line forbids.
+
+The only guest-visible timing mechanism is the executor's **cycle tracker**: a guest that writes
+`cycle-tracker-report-start:<name>` / `cycle-tracker-report-end:<name>` lines to stdout gets
+per-region cycles in `ExecutionReport::cycle_tracker`, with the SDK's `profiling` feature enabled.
+That is a viable plan A' (feature-gated `fp-core` instrumentation, guest-provided writer, no
+assembly), but every instrumented entry/exit costs a `WRITE` syscall; on the hottest functions
+(millions of calls) the instrumentation would dominate and distort the measurement. Whether to
+spend a run on A' (coarse functions only) is the TL's call.
+
+### Plan B: host-side sampling (done)
+
+`fp-host` was built with `--release` and run on the accepted example (2.70 s, native release);
+macOS `sample` attached at 1 ms in three runs, 3,123 samples in total, sorted by self time ("top of
+stack"). Command:
+
+```sh
+./target/release/fp-host <config> <ivk> <req> <y> <proof> -id <ID> -q &
+sample $! 3 -mayDie -file /tmp/sample_fp.txt
+```
+
+| Symbol (fp-core unless noted) | Self samples | Share | Est. guest cycles (share × 27.06G) |
+|---|---|---|---|
+| `field::ext::<E as Mul>::mul` | 634 | 20.30% | ~5.49G |
+| `nanov2_free` (allocator) | 317 | 10.15% | n/a (bump allocator in the guest) |
+| `iop::tensor::Tensor::folded_slice_into` | 297 | 9.51% | ~2.57G |
+| `numbers::real::Big::divmod` | 280 | 8.97% | ~2.43G |
+| `free` (allocator) | 164 | 5.25% | n/a |
+| `platform_memmove` | 163 | 5.22% | ~1.41G |
+| `nanov2_malloc` (allocator) | 134 | 4.29% | n/a |
+| `nanov2_calloc` (allocator) | 125 | 4.00% | n/a |
+| `malloc_zone_malloc` (allocator) | 95 | 3.04% | n/a |
+| `numbers::real::Big::shr` | 81 | 2.59% | ~0.70G |
+| `malloc_zone_calloc` (allocator) | 69 | 2.21% | n/a |
+| `verifier::common::eq_tab` | 68 | 2.18% | ~0.59G |
+| `iop::tensor::Tensor::add_to` | 67 | 2.15% | ~0.58G |
+| `madvise` (allocator) | 66 | 2.11% | n/a |
+| `numbers::real::Big::mul` | 56 | 1.79% | ~0.48G |
+| `platform_memset` | 50 | 1.60% | ~0.43G |
+| `numbers::real::Big::shl` | 40 | 1.28% | ~0.35G |
+| `DYLD-STUB$$free` (allocator) | 36 | 1.15% | n/a |
+| `tree::tree::TreeValues::put` | 32 | 1.02% | ~0.28G |
+| `iop::tensor::spread` | 32 | 1.02% | ~0.28G |
+| `verifier::smallness::HTailF2::tile_self_test` | 31 | 0.99% | ~0.27G |
+| `hash::blake2b::f` | 30 | 0.96% | ~0.26G |
+| `numbers::real::Big::isqrt` | 25 | 0.80% | ~0.22G |
+| `verifier::smallness::HTailF2::fold_sums` | 24 | 0.77% | ~0.21G |
+| `numbers::real::Real::cut` | 21 | 0.67% | ~0.18G |
+| allocator `realloc` paths | ~63 | ~2.0% | n/a |
+
+Grouped: **allocator ~34%** (malloc/free/calloc/realloc/madvise — mostly absent in the guest's bump
+allocator), **field extension multiplication 20.3%**, **tensor copying ~18%** (`folded_slice_into`,
+`add_to`, `spread`, plus `platform_memmove`/`memset`), **`Big` arithmetic ~15.4%** (`divmod`, `shr`,
+`mul`, `shl`, `isqrt`), `eq_tab` 2.2%, **BLAKE2b 0.96%**.
+
+Caveats: native self time is not guest cycles; inlining in the guest's LTO build groups these
+bodies differently, and the guest's allocator is a bump allocator (no `free` cost, but `Vec` growth
+copies remain). The ranked families, not the exact percentages, are the usable signal.
+
+### Proposed Step 1b order (for the TL)
+
+1. **Allocation/copy reduction in the hot paths** (transferable part of the 34% + memmove/memset):
+   `with_capacity`, buffer reuse, fewer `clone`s (the samples show `Vec<PlanRound>::clone`), and a
+   look at `Tensor::folded_slice_into`/`add_to`/`spread` for avoidable copies.
+2. **`E::mul`** (20.3%): a dedicated cubic-extension multiplication path with fewer temporaries and
+   forced inline; must stay algebraically identical (the four gates check it).
+3. **`Big::divmod`/`shr`/`mul`/`shl`** (~15%): fast paths for one- and two-limb operands (the usual
+   case), reduce `Vec` reallocation in the divide loop.
+4. **Misc**: `eq_tab`, `TreeValues::put`, `HTF2` loops.
+
+The exact shares are evidence that the earlier "BLAKE2b/compute" hypotheses were wrong: allocation
+and copying dominate natively, and field/big-integer arithmetic is the pure-compute core.
