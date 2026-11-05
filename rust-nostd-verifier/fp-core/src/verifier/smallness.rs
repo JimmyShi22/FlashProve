@@ -536,6 +536,15 @@ impl HTailF2 {
         forest_elems(&self.f9)
     }
 
+    /// `groupsRun()`: 1 once the check's lookup has run.
+    pub fn groups_run(&self) -> usize {
+        if self.f9_ran {
+            1
+        } else {
+            0
+        }
+    }
+
     /// `addTreesF`: adds U1 .. U3, the PK_i, the PX_i, ZZ, BZ and the PF_i, in this order.
     pub fn add_trees(
         &mut self,
@@ -562,6 +571,9 @@ impl HTailF2 {
             }
             Ok(())
         };
+        // C++ `addTreesF` keeps the lengths in `nUF`; `objectsF`, `selfTestF` and `tileSelfTestF`
+        // read them.
+        self.n_u = n_u;
         let n_u = n_u;
         self.tab_first[0] = 0;
         self.tab_len[0] = 0;
@@ -763,13 +775,13 @@ impl HTailF2 {
     }
 
     /// `transcriptF`: Cf, the commitment to ZZ and BZ, the lookup on the digits.
-    pub fn transcript(
+    pub fn transcript<G: SegmentGate + ?Sized>(
         &mut self,
         f: &mut HFork,
         tr: &mut Tr<'_, '_, '_, '_>,
         slot: &mut u32,
         tail: &Tail2,
-        gate: &mut dyn SegmentGate,
+        gate: &mut G,
         calls: &mut HashCalls,
     ) -> Result<()> {
         if !self.fun_closed {
@@ -839,7 +851,8 @@ impl HTailF2 {
         for q in 1..=2 {
             let pc = self.z[q].pc.clone();
             for p in &pc {
-                let zr = &self.z[q].c.zk[p.b as usize..];
+                // zrOf(): the last p.b coordinates (the piece's window), not the tail after them.
+                let zr = &self.z[q].c.zk[(self.z[q].c.n - p.b) as usize..];
                 let e = eq_tab(zr, p.a as usize);
                 let mut w = vec![E::zero(); f.trees[p.tree as usize].r as usize];
                 for r in 0..p.rp as usize {
@@ -1188,8 +1201,11 @@ impl HTailF2 {
             let c = &self.z[1 + q];
             a.c = a.c + self.f9.e[q] * (self.f9.alpha - es(self.f9.theta, q as u64));
             for p in &c.pc {
-                let zr = &c.c.zk[p.b as usize..];
-                ec.push(eq_tab(zr, p.a as usize));
+                // zrOf(c, p) + p.a, of length log2(CP): the piece's equality factors over its
+                // rows. Since b = a + log2(CP), this is zk[n - log2(CP) .. n].
+                let len = ceil_log2(p.c_p) as usize;
+                let zr = &c.c.zk[(c.c.n as usize) - len..];
+                ec.push(eq_tab(zr, len));
             }
         }
         {
@@ -1204,21 +1220,22 @@ impl HTailF2 {
         for q in 0..2 {
             let c = &self.z[1 + q];
             for p in &c.pc {
-                let zr = &c.c.zk[p.b as usize..];
                 let r = Run2 {
                     tree: p.tree as u32,
                     row: p.row as u32,
                     first: p.c0,
+                    // eqOne(zk, n - b, off >> b): the whole point, only its first n - b bits.
                     coef: E::zero()
-                        - self.f9.e[q] * eq_one(zr, c.c.n - p.b, p.off >> p.b)?,
+                        - self.f9.e[q] * eq_one(&c.c.zk, c.c.n - p.b, p.off >> p.b)?,
                     w: Some(&ec[at]),
                     w0: 0,
-                    n: p.c_p,
+                    // The run covers the data columns `Cp`, not the rounded window `CP`.
+                    n: p.cp,
                 };
                 runs.push(r);
                 for rr in 0..p.rp {
                     let mut first = p.off + rr * p.c_p;
-                    let mut left = p.c_p;
+                    let mut left = p.cp;
                     while left != 0 {
                         let b = first >> self.f9.d_t;
                         let take = left.min(((b + 1) << self.f9.d_t) - first);

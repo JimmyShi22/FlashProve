@@ -148,6 +148,23 @@ pub fn t2_fill_l(f: &mut HFork, t: &Tail2) {
     }
 }
 
+/// `t2Batch`'s state changes, for a caller that has already drawn the batching element with
+/// `trBatchOpen` (the draw must be the sub-proof's last transcript operation; the frame gate
+/// enforces that).
+pub fn t2_batch(f: &mut HFork, t: &mut Tail2, theta: E, used: u32) -> Result<()> {
+    if !t.planned || used != f.ns {
+        return Err(Refusal::internal(&alloc::format!("{}internal-slot-count", f.g)));
+    }
+    t2_fill_l(f, t);
+    t.used = used;
+    f.batch_by(theta)?;
+    if f.plan_claims == 0 {
+        return Err(Refusal::internal(&alloc::format!("{}internal-f-draws", f.g)));
+    }
+    f.kap_map = vec![false; f.plan_claims as usize];
+    Ok(())
+}
+
 /// One run of entries in a linear claim (`struct Run2`): `coef * w[w0 + i]` on column
 /// `first + i` of a virtual row, for `i < n`.
 pub struct Run2<'a> {

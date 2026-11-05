@@ -5,7 +5,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 /// A matrix: `m` cell rows, `k` columns (`struct TMat`).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TMat {
     pub name: String,
     pub m: u64,
@@ -21,6 +21,22 @@ pub struct TMat {
     pub a_id: u64,
     /// The symbol tree's `w`; no parameter-file line sets it.
     pub wp: u32,
+}
+
+impl Default for TMat {
+    /// The C++ member defaults: `kind` 0, `foreign` -1 (no foreign matrix), no offset.
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            m: 0,
+            k: 0,
+            kind: 0,
+            foreign: -1,
+            tt_off: 0,
+            a_id: 0,
+            wp: 0,
+        }
+    }
 }
 
 /// The fold list of one sub-proof's range check (`struct Tail`).

@@ -131,6 +131,54 @@ else
   tail -30 "$tmp/subproof_tests.log"
 fi
 
+echo "parity_subproof: building attention_vectors"
+if clang++ -O2 -std=c++17 -pthread -Iverifier/src -Iblocks -Iprover -DBLK_FIELD=2 \
+  -DBLK_COUNT_HASH_CALLS=1 -DSERVING_BUILD=1 -DDIGEST_WORDS=8 \
+  -DVF_SOURCE_DIGEST='"93afdaf592393a54ebd17b681d1c03295eb883f0161ff0e6ab872a3b39939595"' \
+  -o "$tmp/attention_vectors" "$here/scripts/cpp_vectors/attention_vectors.cpp"; then
+  if "$tmp/attention_vectors" >"$tmp/attention_vectors.txt"; then
+    if cmp -s "$tmp/attention_vectors.txt" "$here/fixtures/attention_vectors.txt"; then
+      ok "attention_vectors: output matches fixtures/attention_vectors.txt"
+    else
+      bad "attention_vectors: output differs from fixtures/attention_vectors.txt"
+      diff -u "$here/fixtures/attention_vectors.txt" "$tmp/attention_vectors.txt" | head -20
+    fi
+  else
+    bad "attention_vectors: C++ run"
+  fi
+else
+  bad "attention_vectors: C++ build"
+fi
+
+echo "parity_subproof: building attention_plan_vectors"
+if clang++ -O2 -std=c++17 -pthread -Iverifier/src -Iblocks -Iprover -DBLK_FIELD=2 \
+  -DBLK_COUNT_HASH_CALLS=1 -DSERVING_BUILD=1 -DDIGEST_WORDS=8 \
+  -DVF_SOURCE_DIGEST='"93afdaf592393a54ebd17b681d1c03295eb883f0161ff0e6ab872a3b39939595"' \
+  -o "$tmp/attention_plan_vectors" "$here/scripts/cpp_vectors/attention_plan_vectors.cpp"; then
+  if "$tmp/attention_plan_vectors" >"$tmp/attention_plan_vectors.txt"; then
+    if cmp -s "$tmp/attention_plan_vectors.txt" "$here/fixtures/attention_plan_vectors.txt"; then
+      ok "attention_plan_vectors: output matches fixtures/attention_plan_vectors.txt"
+    else
+      bad "attention_plan_vectors: output differs from fixtures/attention_plan_vectors.txt"
+      diff -u "$here/fixtures/attention_plan_vectors.txt" "$tmp/attention_plan_vectors.txt" | head -20
+    fi
+  else
+    bad "attention_plan_vectors: C++ run"
+  fi
+else
+  bad "attention_plan_vectors: C++ build"
+fi
+
+for t in attention_vectors attention_plan_vectors attention_run_tests; do
+  if cargo test --manifest-path "$here/Cargo.toml" -p fp-host --test "$t" \
+    >"$tmp/$t.log" 2>&1; then
+    ok "Rust $t"
+  else
+    bad "Rust $t"
+    tail -30 "$tmp/$t.log"
+  fi
+done
+
 echo "parity_subproof: cargo build --workspace"
 if cargo build --manifest-path "$here/Cargo.toml" --workspace >"$tmp/build.log" 2>&1; then
   ok "cargo build --workspace"
