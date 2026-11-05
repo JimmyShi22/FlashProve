@@ -11,8 +11,15 @@
 //! `KL.bin`), the ivk folder (`key.bin` and the leaf file that the proof names), and the request,
 //! y and proof files; a zkVM guest cannot read a folder, so each file is its own input.
 //!
-//! The public output is the call's accounting, the `result-v1` line and `YES` — the same lines
-//! that `fp-host` prints on the accepted example.
+//! The public output is, in this order:
+//!
+//!   1. the fixed 128-byte `FPV1` block (`fp_pv::from_report`): the commitment ID, the verdict,
+//!      the call's status and the SHA-256 digests of the canonical inputs and the `result-v1`
+//!      line. Committed with `commit_slice`, so it starts at offset 0; this is what the ERC-8274
+//!      contract decodes.
+//!   2. the call's accounting, the `result-v1` line and `YES` — the same lines that `fp-host`
+//!      prints on the accepted example (the S5 consistency gate).
+//!   3. the call's status (`i32`).
 
 #![no_std]
 #![no_main]
@@ -44,6 +51,21 @@ pub fn main() {
     let proof = bytes();
     let id = io::read::<String>();
 
+    // Commits to the ten values above, in this order, with a domain separator; the host can
+    // recompute it from the same files without SP1's stdin serialization.
+    let input_digest = fp_pv::input_digest(&fp_pv::InputBundle {
+        policy: &pol,
+        layout: &layout,
+        kl: &kl,
+        key: &key,
+        entry: &entry,
+        entry_number,
+        request: &request,
+        y: &y,
+        proof: &proof,
+        id: &id,
+    });
+
     let (out, status) = call::run(call::Inputs {
         pol: &pol,
         layout: &layout,
@@ -57,6 +79,11 @@ pub fn main() {
         id_asked: &id,
         asked: fp_core::consts::BAR,
     });
+
+    // First, so the report's variable length cannot move it. `commit_slice` writes the raw 128
+    // bytes, with no length prefix, so the block starts at offset 0 of the public values.
+    let public_values = fp_pv::from_report(&out, &id, input_digest);
+    io::commit_slice(&public_values);
     io::commit(&out);
     io::commit(&status);
 }

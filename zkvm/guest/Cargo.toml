@@ -13,3 +13,5 @@ path = "src/main.rs"
 sp1-zkvm = "=6.10.0"
 # The S3 verifier, reused read-only. It is #![no_std] and allocates only through `alloc`.
 fp-core = { path = "../../rust-nostd-verifier/fp-core" }
+# The FPV1 public-values block and the canonical input digest; shared with the host tools.
+fp-pv = { path = "../fp-pv" }

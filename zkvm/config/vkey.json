@@ -1,0 +1,25 @@
+{
+  "schema": "fp-vkey/v1",
+  "program": {
+    "name": "flashprove-verifier",
+    "elf_path": "zkvm/target/elf-compilation/riscv64im-succinct-zkvm-elf/release/guest",
+    "elf_sha256": "0c78b659f7e7df5a8bb84675a5cac5e3c40242fdf5fc077667da93e2345dd30d",
+    "elf_size": 12184776
+  },
+  "sp1": {
+    "sdk_version": "6.10.0",
+    "circuit_version": "v6.1.0",
+    "vkey_bytes32": "0x007991cd508039250725758bafb93d0173397e4743679884dfd7cae0ca21d0aa",
+    "vkey_hash_bytes": "0x3cc8e6a8200e494164aeb1757b93d01719cbf23a0d9e62133faf95c14a21d0aa",
+    "vkey_hash_u32": [
+      1019799208,
+      537807169,
+      1689170293,
+      2073284631,
+      432796218,
+      228483603,
+      1068471745,
+      1243730090
+    ]
+  }
+}

@@ -30,3 +30,9 @@ __pycache__/
 /zkvm/guest/target/
 /zkvm/elf/
 /zkvm/guest/elf/
+
+# S6's prover outputs and Foundry's build, cache and broadcast artifacts.
+/out/
+/zkvm/contracts/out/
+/zkvm/contracts/cache/
+/zkvm/contracts/broadcast/
