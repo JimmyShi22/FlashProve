@@ -113,7 +113,7 @@ fn main() {
 
     let client = ProverClient::builder().cpu().build();
     let started = std::time::Instant::now();
-    let (public, report) = client
+    let (mut public, report) = client
         .execute(Elf::from(elf), stdin)
         .run()
         .unwrap_or_else(|e| fail(&format!("SP1 execute failed: {e}")));
