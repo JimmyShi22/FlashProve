@@ -7,6 +7,7 @@ pub mod attention_run;
 pub mod attention_shape;
 pub mod common;
 pub mod engine;
+pub mod head_check;
 pub mod head_plan;
 pub mod head_rounds;
 pub mod layers_check;

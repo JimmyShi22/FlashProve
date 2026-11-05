@@ -21,7 +21,7 @@ use crate::refusal::{Refusal, Result};
 
 use super::attention_check::AttentionSegment;
 use super::attention_shape::{
-    cut_last, eq_at, head_feat, hi_tab, last_of, long_phi, long_point, ten_cell,
+    cut_last, head_feat, hi_tab, last_of, long_phi, long_point, ten_cell,
 };
 use super::common::{eq_tab, fint, order_default, order_range};
 use super::engine::{fill_l, layer_object, read_product_level_rounds, Aff, HFork, ProductLevel};
@@ -31,8 +31,8 @@ use super::norm_digit_rows::{
     led_carry5, led_lines5, led_no, led_np, led_nr, led_ns, led_products5, led_mu, row5, Row5,
 };
 use super::packing::e_scale;
-use super::segment::{eq_low, eq_low_at, t2_batch, Tail2};
-use super::smallness::{HTailF2, SegmentGate};
+use super::segment::{eq_low, eq_low_at};
+use super::smallness::HTailF2;
 use super::stage_context::{kl, kl_m, rope_c, LKD, LKG, LKQ, LM1, LM2};
 use super::stage_layout::{Hdr, Lay, KDD, KGD, KUD, KR_};
 use super::stage_layout::{KQ_, KV_, KO_};
