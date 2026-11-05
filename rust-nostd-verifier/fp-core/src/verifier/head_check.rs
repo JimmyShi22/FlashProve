@@ -275,7 +275,7 @@ pub fn run_head(
     )?;
     let s_v = t_h.s_end + 1;
     // The prover commits to U3, the evaluation tables.
-    gate.root_in_h(f, tr, &[i_u3 as i32])?;
+    gate.root_in_h(f, tr, &[i_u3 as i32], calls)?;
     let zv = super::attention_shape::last_of(&wpl.r, la as usize)?;
     let yn = {
         let k = cut_last(zl_h(cn), cn.l_j as usize, ls as usize)?;

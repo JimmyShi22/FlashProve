@@ -181,6 +181,17 @@ impl Configured {
 /// A rejection's reason, `refused()`, is a text for a log; every number in it follows from the
 /// files if the caller's function keeps to them (not checked).
 pub fn configure(files: &[&[u8]], shapes: &ShapesOf<'_>) -> Configured {
+    let mut calls = HashCalls::default();
+    configure_with_calls(files, shapes, &mut calls)
+}
+
+/// `configure` with the caller's hash-call counter, so that a run's `q_V` includes the
+/// configuration digest and every hash that the file plans make.
+pub fn configure_with_calls(
+    files: &[&[u8]],
+    shapes: &ShapesOf<'_>,
+    calls: &mut HashCalls,
+) -> Configured {
     let mut c = Configured::default();
     let mut par = Parameters::default();
     if files.is_empty() {
@@ -246,8 +257,7 @@ pub fn configure(files: &[&[u8]], shapes: &ShapesOf<'_>) -> Configured {
         }
         c.range_checks_ = s.range_checks;
     }
-    let mut calls = HashCalls::default();
-    c.fixed_.configuration = configuration_digest(files, &mut calls);
+    c.fixed_.configuration = configuration_digest(files, calls);
     {
         let fixed = key_fixed(&c.sized_, &c.fixed_.configuration);
         if let Some(fault) = key_fault(&fixed) {
@@ -299,8 +309,12 @@ pub fn configure(files: &[&[u8]], shapes: &ShapesOf<'_>) -> Configured {
 /// The commitment ID (`heads.h`) of the commitment whose anchor `first_table` reads (`published_id`,
 /// configure.h:215-222). Not checked: that it is the anchor. The reader's configuration digest is
 /// the caller's own, not a file's: a mismatch with `c`'s, a `fault()` or a rejected `c` is a bug,
-/// and the process ends.
-pub fn published_id(c: &Configured, first_table: &dyn IndexReader) -> Digest {
+/// and the process ends. `calls` receives the hash calls of the ID (C++ counts them in the stage).
+pub fn published_id(
+    c: &Configured,
+    first_table: &dyn IndexReader,
+    calls: &mut HashCalls,
+) -> Digest {
     assert!(
         c.refused().is_empty(),
         "published_id: the public files are not admitted"
@@ -309,11 +323,10 @@ pub fn published_id(c: &Configured, first_table: &dyn IndexReader) -> Digest {
         first_table.fault().is_none() && first_table.configuration() == *c.configuration(),
         "published_id: the table's reader was formed under other public files, or contradicts itself"
     );
-    let mut calls = HashCalls::default();
     let name = first_table.name();
-    let seeds = record_seeds(first_table.shape(), &name, &mut calls);
+    let seeds = record_seeds(first_table.shape(), &name, calls);
     let answers = &first_table.record().y;
-    heads_published_id(c.configuration(), &name, &seeds, answers, &mut calls)
+    heads_published_id(c.configuration(), &name, &seeds, answers, calls)
 }
 
 #[cfg(test)]
@@ -373,14 +386,15 @@ mod tests {
         let name = key.name();
         let seeds = record_seeds(key.shape(), &name, &mut calls);
         let want = heads_published_id(&configuration, &name, &seeds, &key.record().y, &mut calls);
-        assert_eq!(published_id(&c, &key), want);
+        let mut calls = HashCalls::default();
+        assert_eq!(published_id(&c, &key, &mut calls), want);
     }
 
     #[test]
     #[should_panic(expected = "published_id: the public files are not admitted")]
     fn published_id_refuses_a_rejected_configuration() {
         let c = Configured { refused_: String::from("no"), ..Configured::default() };
-        published_id(&c, &a_key_for(&Digest { w: [7; 8] }));
+        published_id(&c, &a_key_for(&Digest { w: [7; 8] }), &mut HashCalls::default());
     }
 
     #[test]
@@ -392,7 +406,7 @@ mod tests {
             fixed_: RequestFixed { configuration: Digest { w: [7; 8] }, ..RequestFixed::default() },
             ..Configured::default()
         };
-        published_id(&c, &a_key_for(&Digest { w: [8; 8] }));
+        published_id(&c, &a_key_for(&Digest { w: [8; 8] }), &mut HashCalls::default());
     }
 
     #[test]

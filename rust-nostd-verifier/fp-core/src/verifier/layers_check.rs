@@ -1539,9 +1539,10 @@ pub fn run_layer_g(
             if sn == "QK" {
                 let tt = t_t.as_ref().unwrap();
                 let et = eq_tab(&tt.r, lt as usize);
-                for lam in 0..lam {
+                for lm in 0..lam {
                     let mut kap = vec![E::zero(); h.dh as usize];
-                    let l = g * lam + lam;
+                    // `l = g * Lam + lam`, with `Lam` the shape's and `lam` this layer index.
+                    let l = g * lam + lm;
                     for i in 0..h.dh / 2 {
                         let mut ct = E::zero();
                         let mut st_ = E::zero();
@@ -1570,7 +1571,7 @@ pub fn run_layer_g(
                         }
                         Ok(x)
                     };
-                    claim(0, lam, &mut fac)?;
+                    claim(0, lm, &mut fac)?;
                 }
             } else if p3 && (sn == "G" || sn == "U" || sn == "D") {
                 for lm in 0..lam_m {
@@ -1658,7 +1659,7 @@ pub fn run_layer_g(
             fun[x.first + q].phi = phi.clone();
         }
     }
-    gate.root_in_h(f, tr, &[i_u3 as i32])?;
+    gate.root_in_h(f, tr, &[i_u3 as i32], calls)?;
     tl.close_funs(&fun)?;
     // The range check's messages.
     tl.transcript(f, tr, &mut slot, &t2, gate, calls)?;

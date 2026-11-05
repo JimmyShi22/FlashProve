@@ -121,16 +121,17 @@ impl AttentionSeam {
         self.tl.transcript(f, tr, slot, &self.t, gate, calls)
     }
 
-    /// `AttentionSeam::batch`: the element that batches the claims, after the last message.
-    pub fn batch(
+    /// `AttentionSeam::batch`: the element that batches the claims, after the last message. The
+    /// production seam draws it and records the segment (`t2Batch`); the test seam does the same.
+    pub fn batch<G: AttentionSegment + ?Sized>(
         &mut self,
         f: &mut HFork,
         tr: &mut Tr<'_, '_, '_, '_>,
         used: u32,
+        gate: &mut G,
         calls: &mut HashCalls,
     ) -> Result<()> {
-        let theta = tr_batch_open(tr, calls)?;
-        t2_batch(f, &mut self.t, theta, used)
+        gate.batch(f, &mut self.t, tr, used, calls)
     }
 
     /// `AttentionSeam::objects`: adds the range check's claims.
@@ -199,8 +200,9 @@ impl SegmentGate for OpenSegment {
         f: &mut HFork,
         tr: &mut Tr<'_, '_, '_, '_>,
         trees: &[i32],
+        calls: &mut HashCalls,
     ) -> Result<()> {
-        self.gate.root_in_h(f, tr, trees)
+        self.gate.root_in_h(f, tr, trees, calls)
     }
 }
 
@@ -258,6 +260,8 @@ pub struct AttentionSubProofInputs {
     /// The stage's `LIDB` and `statedTarget.hb`.
     pub lidb: i32,
     pub stated_hb: u32,
+    /// `T2TAU`: the stage's `TAU` (the smallness test's number of combinations).
+    pub tau: u32,
 }
 
 /// The attention sub-proof's plan (`struct AttentionSubProof`, through `plan()`).
@@ -363,7 +367,7 @@ impl AttentionSubProof {
         }
         self.seam.shape(
             m,
-            crate::consts::TAU_DEFAULT as u32,
+            self.input.tau,
             self.input.col0_q,
             self.input.kt_o,
             self.input.a_o,

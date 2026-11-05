@@ -327,7 +327,7 @@ mod tests {
     use super::*;
     use alloc::vec;
     use crate::numbers::blocks::{GroupSize, Stage};
-    use crate::numbers::codes::CodeSize;
+    use crate::numbers::codes::{ceil_log2, CodeSize};
 
     fn stage(k: u32, h: u32, log_n: u32, ell: u64, r: u64) -> Stage {
         let mut g = GroupSize::default();

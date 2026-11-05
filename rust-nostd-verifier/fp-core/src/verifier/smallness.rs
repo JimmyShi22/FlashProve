@@ -97,7 +97,13 @@ pub trait SegmentGate {
         u_trees: &[i32; 4],
     ) -> Result<()>;
     /// `rootInH`: receives the next commit point's roots.
-    fn root_in_h(&mut self, f: &mut HFork, tr: &mut Tr<'_, '_, '_, '_>, trees: &[i32]) -> Result<()>;
+    fn root_in_h(
+        &mut self,
+        f: &mut HFork,
+        tr: &mut Tr<'_, '_, '_, '_>,
+        trees: &[i32],
+        calls: &mut crate::hash::calls::HashCalls,
+    ) -> Result<()>;
 }
 
 /// A gate for tests and for planning runs: it accepts and marks the named trees committed. It is
@@ -120,6 +126,7 @@ impl SegmentGate for OpenGate {
         f: &mut HFork,
         _tr: &mut Tr<'_, '_, '_, '_>,
         trees: &[i32],
+        _calls: &mut crate::hash::calls::HashCalls,
     ) -> Result<()> {
         for &t in trees {
             if t < 0 || t as usize >= f.trees.len() || f.trees[t as usize].root {
@@ -795,7 +802,7 @@ impl HTailF2 {
         gate.fixed_before_the_matrix(f, &self.gt_tree, &self.ix.u)?;
         self.draw_matrix(tr, calls)?;
         self.fold_drawn += 1;
-        gate.root_in_h(f, tr, &[self.ix.zz, self.ix.bz])?;
+        gate.root_in_h(f, tr, &[self.ix.zz, self.ix.bz], calls)?;
         if !f.trees[self.ix.zz as usize].root || !f.trees[self.ix.bz as usize].root {
             return Err(Refusal::internal(&format!("{}internal-f-order", f.g)));
         }
@@ -1087,10 +1094,16 @@ impl HTailF2 {
                                 || rd[(at - t0) as usize]
                                 || gc[c as usize].is_zero()
                             {
-                                return Err(Refusal::internal(&format!("{}internal-f-table-read", f.g)));
+                                return Err(Refusal::internal(&format!(
+                                    "{}internal-f-table-read",
+                                    f.g
+                                )));
                             }
                             rd[(at - t0) as usize] = true;
-                            aff.add(&u_ent(f, self.ix.u[un as usize] as u32, at)?, E::zero() - lead * gc[c as usize]);
+                            aff.add(
+                                &u_ent(f, self.ix.u[un as usize] as u32, at)?,
+                                E::zero() - lead * gc[c as usize],
+                            );
                         }
                         let runs = [
                             Run2 {

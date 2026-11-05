@@ -71,6 +71,7 @@ fn prover() -> AttentionSubProof {
         wp_q: 0,
         lidb: 22,
         stated_hb: 0,
+        tau: 160,
     };
     sp.plan().unwrap();
     sp

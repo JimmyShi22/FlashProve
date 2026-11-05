@@ -67,6 +67,8 @@ fn main_lines() -> Vec<String> {
         wp_q: 0,
         lidb: 22,
         stated_hb: 0,
+        // The C++ tool includes cp_verify.cpp, whose file-scope TAU is 160 (`vf_common.h:468`).
+        tau: 160,
     };
     sp.plan().unwrap();
 

@@ -66,6 +66,8 @@ pub struct Hdr {
     pub hf: [u32; 13],
     pub ut: u32,
     pub h_calls: [u32; DW],
+    /// The word offset of `h_calls` in the statement (the C++ pointer `h.hCalls - st.data()`).
+    pub off_h_calls: usize,
     pub la: u32,
     pub nmin: u32,
     pub dd: u64,
@@ -84,6 +86,8 @@ pub struct Hdr {
     pub h_sig: [u32; DW],
     pub h_rope: [u32; DW],
     pub h_kv: [u32; DW],
+    /// The word offset of `h_ts` in the statement (the four arrays follow one another).
+    pub off_h_ts: usize,
     pub off_eh: usize,
     pub l_b: u32,
     pub sx: u32,
@@ -98,6 +102,9 @@ pub struct Hdr {
     pub iotaa0: u32,
     pub h_texp: [u32; DW],
     pub h_calls_a: [u32; DW],
+    /// The word offsets of `h_texp` and `h_calls_a` in the statement.
+    pub off_h_texp: usize,
+    pub off_h_calls_a: usize,
     pub mf: u32,
     pub kf: u32,
     pub epsf: u64,
@@ -117,6 +124,8 @@ pub struct Hdr {
     pub tabs: u32,
     pub famf: u32,
     pub h_calls_h: [u32; DW],
+    /// The word offset of `h_calls_h` in the statement.
+    pub off_h_calls_h: usize,
     pub h_tok: [u32; DW],
     pub ytok: u32,
     /// The word offset of `hTok` in the statement (the C++ pointer `h.hTok - st.data()`).
@@ -338,6 +347,7 @@ pub fn parse_header(st: &[u32], state: &mut StageState) -> Result<Hdr> {
         h.hf[KDM] = if experts { h.hf[KDD] } else { 0 };
     }
     h.ut = nx(&mut p);
+    h.off_h_calls = p;
     for x in &mut h.h_calls {
         *x = nx(&mut p);
     }
@@ -360,6 +370,7 @@ pub fn parse_header(st: &[u32], state: &mut StageState) -> Result<Hdr> {
         *x = nx(&mut p);
     }
     p += 2; // seed_lo, seed_hi
+    h.off_h_ts = p;
     for x in &mut h.h_ts {
         *x = nx(&mut p);
     }
@@ -384,9 +395,11 @@ pub fn parse_header(st: &[u32], state: &mut StageState) -> Result<Hdr> {
     h.lmo = nx(&mut p);
     h.lmba = nx(&mut p);
     h.iotaa0 = nx(&mut p);
+    h.off_h_texp = p;
     for x in &mut h.h_texp {
         *x = nx(&mut p);
     }
+    h.off_h_calls_a = p;
     for x in &mut h.h_calls_a {
         *x = nx(&mut p);
     }
@@ -413,6 +426,7 @@ pub fn parse_header(st: &[u32], state: &mut StageState) -> Result<Hdr> {
     h.digsh = nx(&mut p);
     h.tabs = nx(&mut p);
     h.famf = nx(&mut p);
+    h.off_h_calls_h = p;
     for x in &mut h.h_calls_h {
         *x = nx(&mut p);
     }
@@ -479,6 +493,39 @@ fn pol_lay_w(ps: &mut PolScan, i: usize, v: u32) -> Result<()> {
     }
     ps.st[i] = v;
     ps.so.laid[i] = true;
+    Ok(())
+}
+
+/// `layW`: writes word `i` of the statement (`cp_verify.cpp:1308-1310`; the C++ `polLayW`).
+pub fn lay_w(ps: &mut PolScan, i: usize, v: u32) -> Result<()> {
+    pol_lay_w(ps, i, v)
+}
+
+/// `ownW`: writes the digest `w` at statement words `at .. at + w.len()`.
+pub fn lay_words(ps: &mut PolScan, at: usize, w: &[u32]) -> Result<()> {
+    for (j, &x) in w.iter().enumerate() {
+        pol_lay_w(ps, at + j, x)?;
+    }
+    Ok(())
+}
+
+/// `stFromCall` (`cp_verify.cpp:316-325`): fills `so` from the request `p` (T tokens, then r and e)
+/// and the one word `q` of y. Only the length, the range and y's range are tested.
+pub fn st_from_call(so: &mut StOwn, p: &[u32], q: &[u32], t: u64) -> Result<()> {
+    if p.is_empty() || q.is_empty() {
+        return Err(Refusal::named("statement-required"));
+    }
+    if p.len() as u64 != t + 2 || q.len() != 1 {
+        return Err(Refusal::named("statement-range"));
+    }
+    so.req = p.to_vec();
+    so.tok = p[..t as usize].to_vec();
+    so.r = p[t as usize];
+    so.e = p[t as usize + 1];
+    so.y = q[0];
+    if so.r >= so.e || so.e as u64 > t || (so.e as u64) < t && so.y != 0 {
+        return Err(Refusal::named("statement-range"));
+    }
     Ok(())
 }
 

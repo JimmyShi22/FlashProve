@@ -97,6 +97,8 @@ fn plane(
     Ok(s)
 }
 
+/// `shV(t, OFF, nl, J, lam, j)`: entry `OFF + ((l * Lam + lam) * J + j)` for `l < nl`, with `Lam`
+/// the shape's (C++ captures it from `run()`; the argument `lam` is the piece's).
 fn sh_v(
     f: &HFork,
     i_u3: u32,
@@ -107,12 +109,13 @@ fn sh_v(
     j: u64,
     lam: u64,
     jj: u64,
+    lam_shape: u64,
 ) -> Result<Aff> {
     let mut s = Aff::default();
     let mut sc = 1u64;
     for l in 0..nl {
         s.add(
-            &u3_at(f, i_u3, tab_len, t, off + ((l as u64) * lam + lam) * j + jj)?,
+            &u3_at(f, i_u3, tab_len, t, off + ((l as u64) * lam_shape + lam) * j + jj)?,
             ei(sc as i64),
         );
         sc *= 256;
@@ -586,7 +589,7 @@ impl AttentionSubProof {
             sc3_row(&mut f, &mut sc_h, &wh, "h")?;
         }
         // Step 8: the commitment to U3.
-        gate.root_in_h(&mut f, tr, &[self.seam.i_u3() as i32])?;
+        gate.root_in_h(&mut f, tr, &[self.seam.i_u3() as i32], calls_hc)?;
         let la = 1u64 << cf.la;
         let m_s = 1u64 << lm_s;
         let s2 = 1u64 << ls;
@@ -689,15 +692,16 @@ impl AttentionSubProof {
             let k = cut_last(zc, ldh as usize, ls as usize)?;
             Ok(block_rows(&eq_tab(k.lo, ls as usize), ptk))
         };
+        // `ptM.insert(ptM.end(), zilo, zilo + lB)`: exactly lB entries of zi_lo, not all of them.
         let pt_m = {
             let mut v = vpm.r[..(lgk + 2 * ln_t - 1) as usize].to_vec();
-            v.extend_from_slice(zi_lo);
+            v.extend_from_slice(&zi_lo[..cf.l_b as usize]);
             v.extend_from_slice(&vpm.r[vpm.r.len() - cf.l_b as usize..]);
             v
         };
         let pt_d = {
             let mut v = vpd.r[..(lgk + ln_t) as usize].to_vec();
-            v.extend_from_slice(zi_lo);
+            v.extend_from_slice(&zi_lo[..cf.l_b as usize]);
             v.extend_from_slice(&vpd.r[vpd.r.len() - cf.l_b as usize..]);
             v
         };
@@ -853,7 +857,7 @@ impl AttentionSubProof {
         }
         // Step 10.
         f.plan_claims = self.n_lin as u32;
-        self.seam.batch(&mut f, tr, slot, calls_hc)?;
+        self.seam.batch(&mut f, tr, slot, gate, calls_hc)?;
         {
             let i_u3 = self.seam.i_u3();
             let m1 = E::zero() - E::one();
@@ -940,6 +944,7 @@ impl AttentionSubProof {
                                     h,
                                     w.lam,
                                     gg * ha + w.a,
+                                    self.a.lam,
                                 )
                             })?;
                             ff.add(&sg, m1 * w.wp);
@@ -1043,6 +1048,7 @@ impl AttentionSubProof {
                             h,
                             w.lam,
                             gg * ha + w.a,
+                            self.a.lam,
                         )
                     })?;
                     zc_.add(&sv, m1 * w.wp);
@@ -1130,6 +1136,7 @@ impl AttentionSubProof {
                                 lt as u64 * h,
                                 w.lam,
                                 k as u64 * h + gg * ha + w.a,
+                                self.a.lam,
                             )
                         })?;
                         ff.add(&sv, m1 * w.wp);
@@ -1190,6 +1197,7 @@ impl AttentionSubProof {
                             h,
                             w.lam,
                             gg * ha + w.a,
+                            self.a.lam,
                         )
                     })?;
                     f.lin(&(sc3_a(&sc_e, b) - a_side))?;
@@ -1312,6 +1320,7 @@ impl AttentionSubProof {
                         h,
                         lam_b as u64,
                         gg * ha + a_b as u64,
+                        self.a.lam,
                     )
                 })?;
                 f.lin(&(s_aff(s_m6 + b as u32) - sv))?;
@@ -1372,6 +1381,7 @@ impl AttentionSubProof {
                                 lt as u64 * h,
                                 lam_b as u64,
                                 k as u64 * h + gg * ha + a_b as u64,
+                                self.a.lam,
                             )
                         })?;
                         f.lin(&(s_aff(s_ib_at(b, k)) - sv))?;
@@ -1399,6 +1409,7 @@ impl AttentionSubProof {
                                 lt as u64 * h,
                                 lam_b as u64,
                                 k as u64 * h + gg * ha + a_b as u64,
+                                self.a.lam,
                             )
                         })?;
                         ff.add(&sv, m1 * ek[k as usize]);

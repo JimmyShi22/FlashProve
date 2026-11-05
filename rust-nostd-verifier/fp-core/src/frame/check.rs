@@ -286,6 +286,7 @@ pub type LinksCheck<'c> = dyn for<'x, 'a, 'd, 's> FnMut(
         &mut VerifierContext<'x, 'a, 'd, 's>,
         &RequestPublic,
         &mut LinksResult,
+        &mut crate::hash::calls::HashCalls,
     ) -> bool
     + 'c;
 
@@ -380,7 +381,7 @@ pub fn check_proof(
     let first_configuration = *first_ch.configuration();
     let mut first_V = VerifierContext::new(&x.lin.codes, &mut first_ch);
     let mut r = LinksResult::new();
-    if !links(&mut first_V, &x, &mut r) {
+    if !links(&mut first_V, &x, &mut r, calls) {
         drop(first_V);
         return no(&first_ch, why, &mut at, "first chain: the links");
     }
@@ -608,6 +609,7 @@ mod tests {
         _: &mut VerifierContext<'_, '_, '_, '_>,
         _: &RequestPublic,
         _: &mut LinksResult,
+        _: &mut HashCalls,
     ) -> bool {
         true
     }
@@ -616,6 +618,7 @@ mod tests {
         _: &mut VerifierContext<'_, '_, '_, '_>,
         _: &RequestPublic,
         _: &mut LinksResult,
+        _: &mut HashCalls,
     ) -> bool {
         false
     }
