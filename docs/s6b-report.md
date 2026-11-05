@@ -307,6 +307,10 @@ source tree is identical before and after the switch.
   claims; the C++ verifier and the CUDA prover follow the same protocol and are tested against it.
   The wrapper adds the on-chain binding, not a new soundness proof. Weight hiding is out of scope
   (`guide/weight-hiding.md`).
+- **ERC-8274 is not final.** The wrapper follows the current text, including `block.timestamp` in
+  `verificationDigest`. If the final ERC changes that preimage, `FlashProveAgentVerifier.verify`,
+  the event and the tests must change with it; this is the interface-layer alignment to revisit
+  when the standard is final.
 
 ## 6. Files
 
