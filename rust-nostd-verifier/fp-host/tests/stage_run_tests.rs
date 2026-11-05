@@ -61,6 +61,7 @@ fn the_three_stages_print() {
             asked: 128.0,
             quiet: true,
             next_token_asked: false,
+            plan_only: false,
             policy: &policy,
         };
         let mut state = StageState::default();

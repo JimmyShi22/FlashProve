@@ -319,8 +319,8 @@ pub fn build_links(inp: BuildLinksInputs<'_>) -> Result<StageLinks> {
     let plan_hid = Rc::clone(&hid);
     let plan_ah = Rc::clone(&ah);
     let plan_ph = Rc::clone(&ph);
-    let plan: Box<crate::iop::req::ReqSubPlan<'static>> =
-        Box::new(move |p: &mut Plan, link: usize, moment: u32, _last: &mut u64| {
+    let plan: Rc<crate::iop::req::ReqSubPlan<'static>> =
+        Rc::new(move |p: &mut Plan, link: usize, moment: u32, _last: &mut u64| {
             let r = match kind_of[link] {
                 LinkKind::Layers => {
                     plan_layer_moment(p, &plan_hid[g_of[link] as usize], &look, moment)

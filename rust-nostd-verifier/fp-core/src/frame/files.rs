@@ -17,7 +17,6 @@
 //! counter per file sees the same acceptance and rejection as the shared static. No output shows
 //! the numbers.
 
-use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -54,17 +53,19 @@ use crate::numbers::setting::{Scope, Setting};
 /// masks, answers, last test and choice. `plan`: appends a sub-proof's rounds after one commit
 /// point. `after_links`: rounds after the segments' last test; may be empty. `ranges`: what WF
 /// looks up, entry by entry.
+#[derive(Clone)]
 pub struct Subproofs {
     pub request: ReqShape,
     /// For each segment: the number of its open claims.
     pub open_rows: Vec<u64>,
     /// A sub-proof's planner. `None` stands for an empty C++ `std::function`; calling it would
-    /// throw there and ends the process here.
-    pub plan: Option<Box<ReqSubPlan<'static>>>,
+    /// throw there and ends the process here. `Rc` so that a planning call can keep the sub-proofs
+    /// after `configure` has taken a copy.
+    pub plan: Option<Rc<ReqSubPlan<'static>>>,
     /// The number of a request's pending claims.
     pub pending_rows: u64,
     /// Rounds after the segments' last test.
-    pub after_links: Option<Box<dyn Fn(&mut Plan)>>,
+    pub after_links: Option<Rc<dyn Fn(&mut Plan)>>,
     pub ranges: WfShape,
 }
 
@@ -162,7 +163,7 @@ pub fn stand_in_subproofs() -> Subproofs {
         ];
         s.ranges.lookups = alloc::vec![bytes, weights];
     }
-    s.plan = Some(Box::new(|p: &mut Plan, _link: usize, moment: u32, _last: &mut u64| {
+    s.plan = Some(Rc::new(|p: &mut Plan, _link: usize, moment: u32, _last: &mut u64| {
         if moment == 0 {
             for _ in 0..2 {
                 plan_shift(p, "look-up", 1u64 << 21);

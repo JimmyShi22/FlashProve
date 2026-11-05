@@ -25,7 +25,7 @@ use crate::frame::check::{
 use crate::frame::check_entry::{check_entry_if_tested, read_entry_table_unproved_configured};
 use crate::frame::check_key::{check_key, read_key_table_unproved_configured};
 use crate::frame::configure::{configure_with_calls, published_id, Configured, Shapes};
-use crate::frame::files::{merged, FilePlan};
+use crate::frame::files::{merged, FilePlan, Subproofs};
 use crate::frame::parameters::Parameters;
 use crate::hash::calls::HashCalls;
 use crate::hash::earlier::earlier_hash_h_digest;
@@ -43,8 +43,9 @@ use crate::stage_state::{StageState, WorkNote};
 use crate::verifier::attention_check::{AttentionSubProof, AttentionSubProofInputs};
 use crate::verifier::attention_shape::ACfg;
 use crate::verifier::common::{
-    above_clip, acceptance_policy_is_exact_match, good_ending, policy_kind, rotary_served, served_form, PolicyNamed, Served,
-    NOT_A_VERIFICATION_TEXT, SERVED_TWO_CODES, STATUS_STAGE_PASSED_WITH_WORK,
+    above_clip, acceptance_policy_is_exact_match, good_ending, hex64, policy_kind, rotary_served,
+    served_form, PolicyNamed, Served, NOT_A_VERIFICATION_TEXT, SERVED_TWO_CODES,
+    STATUS_STAGE_PASSED_WITH_WORK,
 };
 use crate::verifier::engine::trim_l;
 use crate::verifier::frame_segment::{run_links, LinkStop, SegRun};
@@ -62,12 +63,16 @@ use crate::verifier::tables::{
 };
 use crate::verifier::weights_layout::WsLay;
 
-/// Which stage of a call (`CpStage::name`, `oneTime`).
+/// Which stage of a call (`CpStage::name`, `oneTime`). `PlanId` is `oneTime = 3`, the planning call
+/// `-plan id` (`cp_verify.cpp:3124-3141`); `PlanAccounting` is not a mode there: it is the request
+/// stage with `planOnly` set (`cp_verify.cpp:3142-3159`), so it runs as `Request` with
+/// `StageFiles::plan_only`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StageMode {
     Key,
     Leaf,
     Request,
+    PlanId,
 }
 
 impl StageMode {
@@ -76,6 +81,7 @@ impl StageMode {
             StageMode::Key => "key",
             StageMode::Leaf => "leaf",
             StageMode::Request => "request",
+            StageMode::PlanId => "id",
         }
     }
 }
@@ -100,6 +106,8 @@ pub struct StageFiles<'a> {
     pub asked: f64,
     pub quiet: bool,
     pub next_token_asked: bool,
+    /// `in.planOnly`: a planning call. It reads no proof and ends after the plan it prints.
+    pub plan_only: bool,
     pub policy: &'a PolicyNamed,
 }
 
@@ -243,6 +251,91 @@ fn last_line(
     }
 }
 
+/// `planEndH` (`cp_verify.cpp:2435-2461`): what a planning call prints after the plans. The round
+/// and field listings are not ported; the S4 planning cases ask for neither.
+fn plan_end(
+    out: &mut String,
+    st: &Setup,
+    h: &Hdr,
+    not_served: &str,
+    state: &StageState,
+) -> Result<i32> {
+    let sub = st
+        .sub
+        .as_ref()
+        .expect("a planning call keeps the request's sub-proofs");
+    if !crate::frame::prints::print_plan(out, "request", st.conf.sized(), sub, false, false) {
+        return Err(named("security-bits"));
+    }
+    out.push_str(&format!(
+        "plan: profile {}: the profile rules out no result\n",
+        h.prof
+    ));
+    for (what, plan) in [("a key", st.conf.key()), ("an entry", st.conf.entry())] {
+        let acct = account(&merged(&st.conf.sized().d.set, &[plan.clone()]), -1);
+        out.push_str(&one_time_line(what, acct.closeness[0], acct.closeness[1]));
+        out.push('\n');
+    }
+    if !not_served.is_empty() {
+        out.push_str(&format!(
+            "plan: not the standard parameter form ({}): no run with these public inputs can be a verification (at best status 14)\n",
+            not_served
+        ));
+    }
+    if h.tabs + 4 != h.digsh {
+        out.push_str(&format!(
+            "plan: the policy's kind is {}: every whole call under this parameter file ends NO: policy\n",
+            policy_kind(
+                h.clipc as u64,
+                h.theta as u64,
+                h.cap as u64,
+                h.logs as u64,
+                h.digsh as u64,
+                h.tabs as u64
+            )
+        ));
+    }
+    if state.lidb != crate::consts::LIDB_SEALED {
+        out.push_str(&format!("plan: lidb {}\n", state.lidb));
+    }
+    if state.nminh != 0 {
+        out.push_str(&format!("plan: nminH {}\n", state.nminh));
+    }
+    if state.gate_table_input_fraction_bits != 8 || state.smax != 4095 {
+        out.push_str(&format!(
+            "plan: the SiLU table: key step 2^-{}, values clamped to +-{} (lines eg, smax)\n",
+            state.gate_table_input_fraction_bits, state.smax
+        ));
+    }
+    if state.rcl != 0 {
+        out.push_str("plan: the router's logits are clamped (line rcl)\n");
+    }
+    if state.gcl != 0 {
+        out.push_str("plan: the input of the SiLU table is clamped (line gcl)\n");
+    }
+    if state.residual_stream_limbs == 5 {
+        out.push_str("plan: a value of the residual stream has five limbs (line xl)\n");
+    }
+    if st.ps.tbl_at == TBLW {
+        out.push_str(&format!(
+            "plan: this program's four public tables match the parameter file's digests (lines tsilu0 .. texp{})\n",
+            DW - 1
+        ));
+    }
+    out.push_str(&format!(
+        "statement: {} words, y at word {}\n",
+        st.ps.st.len(),
+        h.off_h_tok + DW as usize
+    ));
+    out.push_str(&format!(
+        "h_par={}\nconfiguration={}\n",
+        hex64(&st.h_par.w),
+        hex_of(*st.conf.configuration())
+    ));
+    out.push_str(&format!("dw={}\nPLAN ONLY: no proof was checked\n", DW));
+    Ok(4)
+}
+
 /// `placedAlike` (`cp_verify.cpp:2378-2389`).
 fn placed_alike(
     a: Option<&crate::iop::req_rows::ReqArray>,
@@ -334,6 +427,8 @@ struct Setup {
     conf: Configured,
     two_codes_h: bool,
     h_par: Digest,
+    /// The request's sub-proofs (`subH`), kept for a planning call's `print_plan`.
+    sub: Option<Subproofs>,
 }
 
 fn setup(files: &StageFiles<'_>, state: &mut StageState, calls: &mut HashCalls) -> Result<Setup> {
@@ -746,6 +841,10 @@ fn setup(files: &StageFiles<'_>, state: &mut StageState, calls: &mut HashCalls) 
         ah,
         ph,
     } = links;
+    // A planning call prints the compact plans after `configure`, so it keeps the sub-proofs. A
+    // checking call does not: the clone would hold the attention plans' `Rc` and block their
+    // single-owner use in the proof walk.
+    let sub_for_plan = if files.plan_only { Some(sub.clone()) } else { None };
     let conf = {
         let cell = core::cell::RefCell::new(Some(shapes_of(
             sub,
@@ -780,6 +879,7 @@ fn setup(files: &StageFiles<'_>, state: &mut StageState, calls: &mut HashCalls) 
         conf,
         two_codes_h,
         h_par,
+        sub: sub_for_plan,
     })
 }
 
@@ -804,30 +904,50 @@ fn run_stage_inner(
     let h = st.ps.h.clone();
     let min_bits = files.asked;
     let below_bar = min_bits < BAR;
-    // The commitment ID, from the key file's first bytes, checked for form only.
+    // The commitment ID, from the key file's first bytes, checked for form only. A planning call
+    // `-plan accounting` reads no key (`cp_verify.cpp:2328`: `if (ask.keyB)`).
     let mut first = UnprovedTable::default();
-    {
-        let mut file = Reader::new(files.key);
-        if let Err(why) = read_key_table_unproved_configured(&st.conf, &mut file, &mut first) {
-            out.push_str(&format!("key: {}\n", why));
-            return Err(named("key-refused"));
+    let has_key = !(mode == StageMode::Request && files.plan_only);
+    let id_hex = if has_key {
+        {
+            let mut file = Reader::new(files.key);
+            if let Err(why) = read_key_table_unproved_configured(&st.conf, &mut file, &mut first) {
+                out.push_str(&format!("key: {}\n", why));
+                return Err(named("key-refused"));
+            }
         }
-    }
-    let id = published_id(&st.conf, first.reader(), calls);
-    let id_hex = hex_of(id);
-    if !files.id_asked.is_empty() && files.id_asked != id_hex {
-        return Err(named("model-statement"));
-    }
-    if mode == StageMode::Request {
-        // `cp_verify.cpp:3363`: a request's stage names the leaf table that the proof is about.
-        out.push_str(&format!("leaf number {}\n", files.entry_number));
-    }
-    out.push_str(&format!(
-        "{}{}\n",
-        crate::verifier::common::STAGEIDLINE,
+        let id = published_id(&st.conf, first.reader(), calls);
+        let id_hex = hex_of(id);
+        if !files.id_asked.is_empty() && files.id_asked != id_hex {
+            return Err(named("model-statement"));
+        }
+        if mode == StageMode::PlanId {
+            // `cp_verify.cpp:2255-2268`: the planning call `id` prints h_par, the IDLINE and ends.
+            out.push_str(&format!(
+                "h_par={}\n{}{}\nPLAN ONLY: no proof was checked\n",
+                crate::verifier::common::hex64(&st.h_par.w),
+                crate::verifier::common::IDLINE,
+                id_hex
+            ));
+            return Ok(4);
+        }
+        if mode == StageMode::Request && !files.plan_only {
+            // `cp_verify.cpp:3363`: a request's stage names the leaf table that the proof is about.
+            // A planning call prints no such line: cpPlanMain does not pass through the stage lambda.
+            out.push_str(&format!("leaf number {}\n", files.entry_number));
+        }
+        out.push_str(&format!(
+            "{}{}\n",
+            crate::verifier::common::STAGEIDLINE,
+            id_hex
+        ));
         id_hex
-    ));
+    } else {
+        String::new()
+    };
     match mode {
+        // `-plan id` has returned above, at its ID line (`cp_verify.cpp:2264-2268`).
+        StageMode::PlanId => unreachable!("the planning call id ends at its ID line"),
         StageMode::Key | StageMode::Leaf => {
             let is_key = mode == StageMode::Key;
             let (what, object) = if is_key { ("a key", "key") } else { ("an entry", "leaf") };
@@ -989,10 +1109,11 @@ fn run_stage_inner(
                     hrc += 1;
                 }
             }
-            // The leaf table on which the proof was made, for form only.
-            let entry = files.entry.ok_or_else(|| named("internal-cp-cut"))?;
+            // The leaf table on which the proof was made, for form only. A planning call reads no
+            // proof and no entry (`cp_verify.cpp:2331`: `if (!planOnly)`).
             let mut further = UnprovedTable::default();
-            {
+            if !files.plan_only {
+                let entry = files.entry.ok_or_else(|| named("internal-cp-cut"))?;
                 let mut file = Reader::new(entry);
                 if let Err(why) =
                     read_entry_table_unproved_configured(&st.conf, &mut file, &mut further)
@@ -1079,7 +1200,8 @@ fn run_stage_inner(
                 two_codes: st.two_codes_h,
                 next_token: !files.next_token_asked
                     || (row_r + 1 == t && row_e == t),
-                exact_match: files.policy.given
+                exact_match: files.plan_only
+                    || files.policy.given
                     || hrc == 0
                     || acceptance_policy_is_exact_match(
                         h.clipc as u64,
@@ -1098,6 +1220,11 @@ fn run_stage_inner(
                         h.tabs as u64,
                     ),
             });
+            if files.plan_only {
+                // `planEndH` (`cp_verify.cpp:2435-2461`): the plan, the profile, the two one-time
+                // lines, the not-served conditions, h_par and the configuration digest; status 4.
+                return plan_end(out, &st, &h, &not_served, state);
+            }
             // The proof.
             let proof = files.proof.ok_or_else(|| named("internal-cp-cut"))?;
             let mut st_no_reply = st.ps.st.clone();

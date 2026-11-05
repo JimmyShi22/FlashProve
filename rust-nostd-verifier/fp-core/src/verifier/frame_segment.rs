@@ -675,6 +675,14 @@ fn run_links_core(
                     }
                     env.y_tok = p[0].0[0].0 as u32;
                 }
+                // `if (hOn[T - 1]) win[T - 1] = yTok;` (vf_output_head_check.inc:36): the token
+                // checked at the last position is the reply that the proof itself sent, not the
+                // caller's. `check_proof` compares the two after the links.
+                let mut win = env.win.to_vec();
+                let tb = (1usize << env.h.lt).wrapping_sub(1);
+                if tb < env.on.len() && env.on[tb] {
+                    win[tb] = env.y_tok;
+                }
                 let inp = HeadCheckInputs {
                     h: env.h,
                     y: env.y,
@@ -686,7 +694,7 @@ fn run_links_core(
                     lidb: env.lidb,
                     limbs: env.limbs,
                     y_tok: env.y_tok,
-                    win: env.win,
+                    win: &win,
                     on: env.on,
                     on_c: env.on_c,
                     hrc: env.hrc,

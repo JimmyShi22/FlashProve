@@ -81,6 +81,29 @@ impl Big {
             | ((self.w.get(1).copied().unwrap_or(0) as u64) << 32)
     }
 
+    /// `Big::dec()` (`real.h:232-245`): the number in decimal digits.
+    pub fn dec(&self) -> String {
+        if self.is_zero() {
+            return String::from("0");
+        }
+        let ten9 = Big::from_u64(1_000_000_000);
+        let mut x = self.clone();
+        let mut digits: Vec<u8> = Vec::new();
+        while !x.is_zero() {
+            let (q, r) = Big::divmod(&x, &ten9);
+            let mut d = if r.is_zero() { 0 } else { r.to_u64() };
+            let mut i = 0;
+            while i < 9 && (!q.is_zero() || d != 0) {
+                digits.push(b'0' + (d % 10) as u8);
+                d /= 10;
+                i += 1;
+            }
+            x = q;
+        }
+        digits.reverse();
+        String::from_utf8(digits).expect("Big::dec: decimal digits are UTF-8")
+    }
+
     pub fn cmp(a: &Big, b: &Big) -> Ordering {
         if a.w.len() != b.w.len() {
             return a.w.len().cmp(&b.w.len());
