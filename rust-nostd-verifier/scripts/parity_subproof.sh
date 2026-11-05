@@ -208,6 +208,33 @@ for t in weights_vectors weights_tests; do
   fi
 done
 
+echo "parity_subproof: building layout_vectors"
+if clang++ -O2 -std=c++17 -pthread -Iverifier/src -Iblocks -Iprover -DBLK_FIELD=2 \
+  -DBLK_COUNT_HASH_CALLS=1 -DSERVING_BUILD=1 -DDIGEST_WORDS=8 \
+  -DVF_SOURCE_DIGEST='"93afdaf592393a54ebd17b681d1c03295eb883f0161ff0e6ab872a3b39939595"' \
+  -o "$tmp/layout_vectors" "$here/scripts/cpp_vectors/layout_vectors.cpp"; then
+  if "$tmp/layout_vectors" "$here/fixtures/config/policy.txt" >"$tmp/layout_vectors.txt"; then
+    if cmp -s "$tmp/layout_vectors.txt" "$here/fixtures/layout_vectors.txt"; then
+      ok "layout_vectors: output matches fixtures/layout_vectors.txt"
+    else
+      bad "layout_vectors: output differs from fixtures/layout_vectors.txt"
+      diff -u "$here/fixtures/layout_vectors.txt" "$tmp/layout_vectors.txt" | head -20
+    fi
+  else
+    bad "layout_vectors: C++ run"
+  fi
+else
+  bad "layout_vectors: C++ build"
+fi
+
+if cargo test --manifest-path "$here/Cargo.toml" -p fp-host --test layout_vectors \
+  >"$tmp/layout_vectors.log" 2>&1; then
+  ok "Rust layout_vectors"
+else
+  bad "Rust layout_vectors"
+  tail -30 "$tmp/layout_vectors.log"
+fi
+
 echo "parity_subproof: cargo build --workspace"
 if cargo build --manifest-path "$here/Cargo.toml" --workspace >"$tmp/build.log" 2>&1; then
   ok "cargo build --workspace"
