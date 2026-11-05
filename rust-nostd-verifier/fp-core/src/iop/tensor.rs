@@ -378,19 +378,19 @@ impl Tensor {
             let x = g[self.dense_vars[i] as usize];
             let low_half = 1usize << i;
             let half = n / 2;
-            if room.len() < half {
-                room.resize(half, E::zero());
-            }
+            // The fold is done in place: every write lands below `half`, and every later read is
+            // at or above the write region (the reads of the current block happen first). The
+            // caller's `room` is kept for the API that C++ has, and is no longer needed here.
+            let _ = &room;
             for b in 0..n / (2 * low_half) {
                 for a in 0..low_half {
                     let zero = cur[a + 2 * low_half * b];
                     let one = cur[a + low_half + 2 * low_half * b];
-                    room[a + low_half * b] = zero + (one - zero) * x;
+                    cur[a + low_half * b] = zero + (one - zero) * x;
                 }
             }
-            cur.clear();
-            cur.extend_from_slice(&room[..half]);
             n = half;
+            cur.truncate(n);
         }
         let factor = if n == 1 { cur[0] } else { E::one() };
         Slice { values: Some(Rc::new(cur)), factor }

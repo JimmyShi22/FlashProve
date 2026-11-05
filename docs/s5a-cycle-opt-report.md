@@ -364,3 +364,21 @@ and copying dominate natively, and field/big-integer arithmetic is the pure-comp
   The lazy-reduction schoolbook is the better shape on this target.
 - **Revert check**: the rebuilt guest ELF is bit-identical to the pre-change one (SHA-256
   `9955586d5a34e9a9…`), so the 27,055,820,319 baseline stands without a rerun.
+
+### Step 1b item 2: allocation and copying (kept, −0.68%)
+
+- **Change**: `Tensor::folded_slice_into` now folds **in place**: the write region of each level
+  lies below every later read, so `cur[a + low_half*b] = zero + (one - zero) * x` can overwrite
+  the first half of `cur` directly. The per-level copy back from the caller's `room`
+  (`cur.clear(); cur.extend_from_slice(&room[..half])`) is gone. The `room` parameter stays for the
+  C++-shaped API (and is unused by the new loop). Values are unchanged.
+- **Gates**: `cargo test --workspace` **229 passed**; `scripts/parity_base.sh` **37 passed**
+  (including the IOP/tensor vectors); full execute **26,872,664,302 cycles** against 27,055,820,319:
+  **−183,156,017 (−0.68%)**; `result-v1`/`YES` IDENTICAL.
+- **Kept.**
+- **Other item-2 sites assessed**: `Tensor::add_to` and `spread` already write through a
+  caller-reused `room` and allocate nothing per call (`Form::add_to` reuses one room across its
+  tensors); `Plan::finish`'s `Vec<PlanRound>::clone` is ~0.2% of the native samples and removing it
+  would change the builder API for no measured benefit; the other `Vec::new()` sites in
+  `smallness.rs` are one-time structure construction. The remaining allocation traffic in the
+  guest is the bump allocator plus growth copies, not per-call tensor garbage.
