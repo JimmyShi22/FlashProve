@@ -922,10 +922,11 @@ impl HTailF2 {
             return Err(Refusal::internal("internal-f-draws"));
         }
         self.fold_taken[mu] = true;
-        let k = self.mats[mu].k;
-        *gx = vec![E::zero(); k as usize];
-        *gv = vec![E::zero(); k as usize];
-        for c in 0..k as usize {
+        let k = self.mats[mu].k as usize;
+        // Fill directly; the previous `vec![E::zero(); k]` wrote every entry twice.
+        let mut xv = Vec::with_capacity(k);
+        let mut vv = Vec::with_capacity(k);
+        for c in 0..k {
             let base = (self.cf_first[mu] as usize + c) * self.tau as usize;
             let mut px = [0u128; 3];
             let mut nx = [0u128; 3];
@@ -952,12 +953,14 @@ impl HTailF2 {
             let mut x = E::zero();
             let mut v = E::zero();
             for i in 0..3 {
-                x.0[i] = F(super::common::fred(px[i])) - F(super::common::fred(nx[i]));
-                v.0[i] = F(super::common::fred(pv[i])) - F(super::common::fred(nv[i]));
+                x.0[i] = F(super::common::fred_diff(px[i], nx[i]));
+                v.0[i] = F(super::common::fred_diff(pv[i], nv[i]));
             }
-            gx[c] = x;
-            gv[c] = v;
+            xv.push(x);
+            vv.push(v);
         }
+        *gx = xv;
+        *gv = vv;
         Ok(())
     }
 
@@ -1372,7 +1375,7 @@ impl HTailF2 {
     /// `tileSelfTestF`: the tiling self-test. Call it after [`Self::coefficients`].
     pub fn tile_self_test(&self, f: &HFork, tail: &Tail2) -> Result<()> {
         let bad = || Refusal::internal(&format!("{}internal-t2f-untiled", f.g));
-        let mut want: Vec<(i32, usize, i32, String, i32, u64, u64, u64, u64)> = Vec::new();
+        let mut want: Vec<(i32, usize, i32, &'static str, i32, u64, u64, u64, u64)> = Vec::new();
         let rows1 = 1u64 << (63 - (self.tau as u64).leading_zeros());
         let rows2 = self.tau as u64 - rows1;
         let nb_w: usize = if rows2 != 0 { 2 } else { 1 };
@@ -1384,7 +1387,7 @@ impl HTailF2 {
                 q,
                 0,
                 self.ix.zz,
-                String::from("ZZ"),
+                "ZZ",
                 q * nb_w as i32,
                 0,
                 rows1,
@@ -1396,7 +1399,7 @@ impl HTailF2 {
                     q,
                     1,
                     self.ix.zz,
-                    String::from("ZZ"),
+                    "ZZ",
                     q * nb_w as i32 + 1,
                     rows1,
                     rows2,

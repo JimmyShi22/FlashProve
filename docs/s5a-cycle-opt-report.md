@@ -409,3 +409,56 @@ and copying dominate natively, and field/big-integer arithmetic is the pure-comp
 - **Kept.** This is the largest single-step gain so far in S5a-3 and confirms the sampling
   attribution (`Big` ~15% of native samples, small operands dominate): the savings come from
   avoiding allocation and long-division machinery on values that fit a machine word.
+
+### Step 1b item 4: miscellaneous hot spots (kept, −0.24%)
+
+- **Change** (four sites, none touching a protocol value):
+  1. `verifier::common::eq_tab`: the `2^len` table is built in one pre-sized buffer and each
+     doubling level is filled from the **back** (`t.resize(2*nt, E::zero())`, then `c` descending
+     writes `t[2c]`/`t[2c+1]`). A column's writes land at or above its own index, so a descending
+     walk still reads the level's inputs; the output order matches the C++ loop. One allocation
+     per table instead of `len`, and no copy of each level into a fresh `Vec`.
+  2. `tree::TreeValues::put`: `BTreeMap::entry` — one search instead of a `get` plus an `insert`
+     on a miss. The clash/fresh bookkeeping is unchanged.
+  3. `HTailF2::fold_sums`: `gx`/`gv` are filled with `with_capacity` + `push` instead of zeroing
+     `vec![E::zero(); k]` and overwriting every entry; the signed sums are reduced **once**,
+     `fred_diff(p, n) = fred(p + (P << 32) - n)`, instead of twice (`fred(p) - fred(n)`). The
+     addend is a multiple of the modulus and exceeds any accumulator (the sums are below
+     `tau * 2^64`, and the verifier's `tau ≤ 256`), so it stays inside `u128` and the canonical
+     result is identical.
+  4. `HTailF2::tile_self_test`: the `want` rows hold `&'static str` names instead of `String`,
+     removing four heap strings per call.
+- **Gates**: `cargo test --workspace` **229 passed**; `scripts/parity.sh` **31/31**;
+  `scripts/parity_e2e.sh` **3/3**; `scripts/parity_negative.sh` **70/70** (rejection names 11/11);
+  `scripts/parity_base.sh` **37 passed** (including the fp-core no_std scan). Full execute
+  **26,564,072,573 cycles** against 26,628,389,161: **−64,316,588 (−0.24%)**; `result-v1`/`YES`
+  IDENTICAL; consistency PASS. Guest ELF SHA-256
+  `6dc288ea8d13da3162b0f6df0e13295ff03deae694a9ba21f7816320280bc6d3`, 12,228,360 bytes.
+- **Kept.** The size of the gain matches the sampled shares of the four sites (about 4% combined,
+  part of it allocator traffic); the loop bodies of `tile_self_test`/`fold_sums` themselves moved
+  little, as expected.
+
+## S5a-3 summary
+
+| Step | Cycles | Δ vs previous | Δ vs instrumented baseline |
+|---|---|---|---|
+| Step 0-1a baseline (part input, instrumented) | 27,055,820,319 | — | — |
+| item 1: `E::mul` Karatsuba (reverted) | 30,538,990,976 | +3,483,170,657 (+12.87%) | +12.87% |
+| item 2: `Tensor::folded_slice_into` in place | 26,872,664,302 | −183,156,017 (−0.68%) | −0.68% |
+| item 3: `Big` fast paths | 26,628,389,161 | −244,275,141 (−0.91%) | −1.58% |
+| item 4: miscellaneous hot spots | **26,564,072,573** | −64,316,588 (−0.24%) | **−1.82%** |
+
+- **Final accepted S5a-3 state: 26,564,072,573 cycles.**
+  - against the S5a-2 accepted 27,079,048,885: **−514,976,312 (−1.90%)**;
+  - against the instrumented S5a-3 baseline 27,055,820,319: **−491,747,746 (−1.82%)**;
+  - against the S5 baseline 32,385,267,062: **−5,821,194,489 (−17.97%)**.
+- **Consistency**: full execute on the accepted example, `result-v1` and `YES` byte-identical to
+  `fp-host`; status 0; `build=93afdaf5…` unchanged.
+- **Acceptance gates (final tree)**: `cargo test --workspace` 229 passed; `parity.sh` 31/31;
+  `parity_e2e.sh` 3/3; `parity_negative.sh` 70/70 with the rejection-name checklist 11/11;
+  `parity_base.sh` 37 passed including the fp-core no_std scan.
+- **Method notes that generalize**: (a) the accepted gains came from removing allocation and
+  copying around the arithmetic (items 2–4), not from changing the algebra; (b) the one algebraic
+  rewrite (Karatsuba `E::mul`) lost 12.87%, because on RV64IM a lazy 3-product/1-reduction `dot3`
+  beats six reduced products; (c) the sampled attribution (Big ~15%, E::mul ~20%, allocator ~34%,
+  tensor copies ~18%) predicted the sign and rough size of every accepted step.

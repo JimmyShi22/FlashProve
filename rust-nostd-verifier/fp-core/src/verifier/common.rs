@@ -175,6 +175,15 @@ pub const fn fred(v: u128) -> u64 {
     gl64::reduce128((v >> 64) as u64, v as u64)
 }
 
+/// `fred(p) - fred(n)` for non-negative accumulators, with one reduction instead of two.
+/// `(P << 32)` is a multiple of the modulus and exceeds any accumulator below `2^32 * 2^64`
+/// (the signed sums built by `fold_sums` are below `tau * 2^64`), and `p + (P << 32) - n` stays
+/// inside `u128`, so the result is the same canonical value as the two-reduction difference.
+#[inline]
+pub const fn fred_diff(p: u128, n: u128) -> u64 {
+    fred(p + ((gl64::P as u128) << 32) - n)
+}
+
 /// `a + x1 y1`, canonical (`fmad1`, `vf_common.h:405-407`).
 #[inline]
 pub const fn fmad1(a: u64, x1: u64, y1: u64) -> u64 {
@@ -259,14 +268,16 @@ pub fn eq_tab(z: &[E], len: usize) -> Vec<E> {
     for v in 0..len {
         let nt = t.len();
         let zv = z[v];
-        let mut next = Vec::with_capacity(2 * nt);
-        // The C++ loop writes d[2 c] and d[2 c + 1]; keep that order (it is also the table's).
-        for c in 0..nt {
-            let hi = t[c] * zv;
-            next.push(t[c] - hi);
-            next.push(hi);
+        // One buffer for the whole table. The level is filled from the back: the writes of
+        // column `c` land at `2c` and `2c + 1`, both at or above `c`, so a descending walk still
+        // reads the level's inputs. The output order matches the C++ loop (`d[2c]`, `d[2c+1]`).
+        t.resize(2 * nt, E::zero());
+        for c in (0..nt).rev() {
+            let x = t[c];
+            let hi = x * zv;
+            t[2 * c] = x - hi;
+            t[2 * c + 1] = hi;
         }
-        t = next;
     }
     t
 }

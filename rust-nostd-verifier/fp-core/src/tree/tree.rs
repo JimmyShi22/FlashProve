@@ -1,5 +1,6 @@
 //! Merkle trees over digests, verifier side, ported from `blocks/tree/tree.h`.
 
+use alloc::collections::btree_map::Entry;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
@@ -54,14 +55,18 @@ impl TreeValues {
     pub fn put(&mut self, depth: u32, place: u64, value: &Digest) -> bool {
         self.entered += 1;
         let key = tree_index(depth, place);
-        if let Some(old) = self.seen.get(&key) {
-            if old != value {
-                self.clashed = true;
+        // One tree search instead of a lookup followed by an insert on a miss.
+        match self.seen.entry(key) {
+            Entry::Occupied(o) => {
+                if o.get() != value {
+                    self.clashed = true;
+                }
             }
-        } else {
-            self.seen.insert(key, *value);
-            if self.on_trial {
-                self.fresh.push(key);
+            Entry::Vacant(v) => {
+                v.insert(*value);
+                if self.on_trial {
+                    self.fresh.push(key);
+                }
             }
         }
         !self.clashed
