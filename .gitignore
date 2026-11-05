@@ -24,3 +24,9 @@ __pycache__/
 
 # Any nested Claude Code state directory.
 .omc/
+
+# S5's zkVM workspace: cargo and `cargo prove build` outputs.
+/zkvm/target/
+/zkvm/guest/target/
+/zkvm/elf/
+/zkvm/guest/elf/
